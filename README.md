@@ -1,8 +1,31 @@
 # hashmatrix-control-plane
 
-> hashmatrix 数据中台子模块 · 所属：控制平面
+> hashmatrix 数据中台子模块 · 所属：横切 · 控制平面（跨租户单例）
 >
 > 主仓：[HashMatrixData/hashmatrix](https://github.com/HashMatrixData/hashmatrix)
+
+## 角色与位置（一眼看懂）
+
+- **所属**：横切层 · **多租户控制平面**（跨租户单例，与数据平面分离）。
+- **一句话**：多租户的"中枢"——新企业注册即开通一套服务，并治理其资源隔离与生命周期。
+- **编排流**：注册 → 审批 → **control-plane** →（Keycloak Org + Helm/K8s + 数据存储 + secrets）→ 一套隔离的租户服务。
+
+## 职责与边界
+
+- **做**：租户注册 / 开通(provision) / 生命周期 / 配额 / 租户目录；建 namespace、schema·db、服务实例、secrets；管理 Keycloak Organizations。
+- **不做（边界）**：不写各分系统业务逻辑；**租户开通不耦合 Git/Argo**（命令式）；它创建数据平面的隔离，业务由各分系统承担。
+
+## 骨架技术选型（首选 · 待逐仓细化）
+
+| 维度 | 选型 |
+|--|--|
+| 运行时 | Spring Boot（Java） |
+| K8s 编排 | **Helm SDK/CLI 包装 + Kubernetes Java client**（命令式，不依赖 Git/Argo） |
+| 身份 | **Keycloak Admin API**（Organizations 管理） |
+| Secrets | **External Secrets Operator** |
+| 租户目录 | PostgreSQL |
+
+> 详细设计见主仓 `docs/architecture/05-多租户与控制平面.md`。
 
 ## 产品形态与多租户（北极星）
 
@@ -11,14 +34,6 @@
 **本仓视角**：多租户**中枢**——注册 / 开通 / 生命周期 / 配额，编排租户隔离资源 + Keycloak Organizations。
 
 > 详见主仓 `docs/00-主仓初始化-spec.md`、`docs/architecture/05-多租户与控制平面.md`。
-
-## 职责
-
-多租户**控制平面**：租户注册、开通（provision）、生命周期、配额与租户目录。经 **Helm SDK + Kubernetes client 命令式编排**开通租户资源（namespace / schema·db / 服务实例 / secrets），生产期不依赖 Git/Argo。
-
-## 技术栈
-
-Java（Spring Boot）（**具体技术选型待独立讨论，逐步丰富**）
 
 ## 说明
 
