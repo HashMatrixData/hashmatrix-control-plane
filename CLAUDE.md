@@ -22,6 +22,22 @@
 - [ ] 敏感原始资料未入库（已在 `.gitignore`）
 - [ ] 提交信息与分支/标签名同样不含上述敏感信息
 
+## 🧭 北极星：产品形态与多租户模式（开发者时刻谨记）
+
+本平台**双模交付**，所有设计与代码都须按此模式思考：
+
+| | 公网 SaaS | 私有化部署 |
+|--|--|--|
+| 运营 / 品牌 | 我们运营 · **我们公司统一品牌** | 客户环境 · **客户品牌（部署级）** |
+| 租户 = | 企业客户 | 客户的部门 |
+
+- **品牌是部署级**（部署期配置注入），**不按租户在运行期动态换肤**。
+- **多租户隔离（C 分层桥接）**：控制平面共享 + 数据平面按租户隔离。身份 = Keycloak **Organizations 单 realm**（org=租户，JWT 带 tenant 声明）；数据 = **schema/db-per-tenant**；计算 = **namespace-per-tenant**；由 `control-plane` 编排开通。
+
+**本仓视角（control-plane）**：**本仓就是多租户的中枢**——承载租户注册 / 开通 / 生命周期 / 配额，经 Helm SDK + Kubernetes client 命令式开通租户的 namespace / schema·db / 服务实例 / secrets，并管理 Keycloak Organizations。其它仓「按租户隔离」，本仓「创建并治理这些隔离」。
+
+> 全局定义见主仓 `docs/00-主仓初始化-spec.md` 与 `docs/architecture/05-多租户与控制平面.md`。
+
 ## 仓库定位
 
 多租户**控制平面**：租户注册 / 开通（provision）/ 生命周期 / 配额 / 租户目录。经 Helm SDK + Kubernetes client 命令式编排开通租户资源；身份对接 Keycloak Organizations。
