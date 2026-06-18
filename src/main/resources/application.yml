@@ -31,7 +31,8 @@ management:
   endpoints:
     web:
       exposure:
-        include: health,info
+        # prometheus 指标出口由 starter-observability 提供。
+        include: health,info,prometheus
   endpoint:
     health:
       probes:

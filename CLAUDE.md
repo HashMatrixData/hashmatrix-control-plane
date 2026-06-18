@@ -58,4 +58,4 @@
 
 多租户**控制平面**：租户注册 / 开通（provision）/ 生命周期 / 配额 / 租户目录。经 Helm SDK + Kubernetes client 命令式编排开通租户资源；身份对接 Keycloak Organizations。
 
-**技术栈（已落地骨架）**：Java 17 · Spring Boot 3.3.5（经主仓 `hashmatrix-bom` 钉死）· Spring Data JPA + PostgreSQL + Flyway · 复用 `starter-tenant`/`starter-web`/`starter-test`。开通编排以**端口/适配器**解耦：`IdentityProvisioner`（Keycloak）/`ComputeProvisioner`（Helm+K8s）/`DataProvisioner`（schema·db + Doris/Paimon）/`SecretsProvisioner`（ESO），默认装配 **stub 适配器**（`provisioning.mode=stub`）以无活集群跑通时序；真实适配器按 issue #1 路线图逐步接入。详见 `README.md`。
+**技术栈（已落地骨架）**：Java 17 · Spring Boot 3.3.5（经主仓 `hashmatrix-bom` 钉死）· Spring Data JPA + PostgreSQL + Flyway · 复用 `starter-tenant`/`starter-web`/`starter-audit`/`starter-observability`/`starter-test`。开通编排以**端口/适配器**解耦：`IdentityProvisioner`（Keycloak）/`ComputeProvisioner`（Helm+K8s）/`DataProvisioner`（schema·db + Doris/Paimon）/`SecretsProvisioner`（ESO），默认装配 **stub 适配器**（`provisioning.mode=stub`）以无活集群跑通时序；真实适配器按 issue #1 路线图逐步接入。详见 `README.md`。

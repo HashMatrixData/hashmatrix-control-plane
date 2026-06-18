@@ -40,7 +40,7 @@
 
 > 对应 GitHub Issue #1 首个增量：**可构建可测的纵切片**——工程基座 + 租户目录/状态机 + 开通编排（端口/适配器 + stub）。真实 Keycloak/Helm/K8s/Doris/ESO 适配器按 issue 路线图后续接入。
 
-**技术栈**：Java 17 · Spring Boot 3.3.5（经主仓 `hashmatrix-bom` 钉死）· Spring Data JPA + PostgreSQL + Flyway · 复用 `starter-tenant`/`starter-web`/`starter-test`。
+**技术栈**：Java 17 · Spring Boot 3.3.5（经主仓 `hashmatrix-bom` 钉死）· Spring Data JPA + PostgreSQL + Flyway · 复用 `starter-tenant`/`starter-web`/`starter-audit`/`starter-observability`/`starter-test`。
 
 **目录结构**：
 
@@ -67,6 +67,8 @@ src/main/resources/
 ```bash
 mvn -q -DskipTests package        # 产出可执行 fat-jar：target/control-plane-*.jar
 ```
+
+> ⚠️ **依赖前置**：本仓 `import hashmatrix-bom` 已 pin 到 **v0.2.0** 并复用 `starter-audit`/`starter-observability`（对齐 issue #1 评论3）。该版本与两个 starter 须先由 libs-java 发布（或本地 `mvn install`）方可解析——在 v0.2.0 落地前 `mvn package` 会因解析不到 BOM 0.2.0 而失败，属预期。
 
 **本地独立运行/调试**（依赖 PostgreSQL + Keycloak）：
 

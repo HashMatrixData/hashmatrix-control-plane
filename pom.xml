@@ -44,7 +44,7 @@
       <dependency>
         <groupId>io.hashmatrix</groupId>
         <artifactId>hashmatrix-bom</artifactId>
-        <version>0.1.0</version>
+        <version>0.2.0</version>
         <type>pom</type>
         <scope>import</scope>
       </dependency>
@@ -94,6 +94,16 @@
     <dependency>
       <groupId>io.hashmatrix</groupId>
       <artifactId>hashmatrix-starter-web</artifactId>
+    </dependency>
+    <!-- 统一审计：AuditEvent + AuditRecorder（默认 slf4j 结构化），事件自动加盖当前租户。 -->
+    <dependency>
+      <groupId>io.hashmatrix</groupId>
+      <artifactId>hashmatrix-starter-audit</artifactId>
+    </dependency>
+    <!-- 可观测：actuator 健康探针 + /actuator/prometheus 指标出口 + 平台公共指标标签。 -->
+    <dependency>
+      <groupId>io.hashmatrix</groupId>
+      <artifactId>hashmatrix-starter-observability</artifactId>
     </dependency>
 
     <!-- 统一测试栈（JUnit5 + AssertJ + Mockito + Testcontainers）+ 脱敏 fixtures -->
