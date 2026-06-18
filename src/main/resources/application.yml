@@ -1,0 +1,39 @@
+spring:
+  application:
+    name: control-plane
+  datasource:
+    # 默认连本地 docker-compose.local.yml 起的 PostgreSQL；生产/测试经环境变量覆盖。
+    url: ${CONTROL_PLANE_DB_URL:jdbc:postgresql://localhost:5432/control_plane}
+    username: ${CONTROL_PLANE_DB_USER:control_plane}
+    password: ${CONTROL_PLANE_DB_PASSWORD:control_plane}
+  jpa:
+    # schema 由 Flyway 管理，JPA 不做 DDL（仅校验映射与库一致）。
+    hibernate:
+      ddl-auto: validate
+    open-in-view: false
+    properties:
+      hibernate:
+        jdbc:
+          time_zone: UTC
+  flyway:
+    enabled: true
+    locations: classpath:db/migration
+
+# 控制平面开通编排配置。
+# hashmatrix.control-plane.provisioning.mode=stub（默认）：用日志/空操作适配器模拟开通时序，
+# 无需活集群即可端到端跑通；真实 Keycloak/Helm/K8s/Doris/ESO 适配器接入后切换对应 mode（见 README 路线图）。
+hashmatrix:
+  control-plane:
+    provisioning:
+      mode: stub
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info
+  endpoint:
+    health:
+      probes:
+        enabled: true
+      show-details: when-authorized

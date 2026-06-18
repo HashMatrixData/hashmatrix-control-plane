@@ -1,0 +1,44 @@
+# 本地独立运行/调试依赖栈：PostgreSQL（租户目录）+ Keycloak（身份）。
+# K8s 不在此栈内：本地用 kind 或 provisioning.mode=stub 跑通开通时序（见 README）。
+#
+#   docker compose -f docker-compose.local.yml up -d
+#   SPRING_PROFILES_ACTIVE=local mvn spring-boot:run
+#
+# 🔴 红线：本文件全部为本地脱敏占位口令，**严禁**用于任何真实/生产环境；真实凭据经 ESO/Vault 注入，不入库。
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: control-plane-postgres
+    environment:
+      POSTGRES_DB: control_plane
+      POSTGRES_USER: control_plane
+      POSTGRES_PASSWORD: control_plane   # 本地占位口令，仅本机使用
+    ports:
+      - "5432:5432"
+    volumes:
+      - control-plane-pg:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U control_plane -d control_plane"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  keycloak:
+    image: quay.io/keycloak/keycloak:25.0
+    container_name: control-plane-keycloak
+    command: ["start-dev"]
+    environment:
+      KC_BOOTSTRAP_ADMIN_USERNAME: admin
+      KC_BOOTSTRAP_ADMIN_PASSWORD: admin   # 本地占位口令，仅本机使用
+      KC_HEALTH_ENABLED: "true"
+    ports:
+      - "8081:8080"
+    healthcheck:
+      test: ["CMD-SHELL", "exec 3<>/dev/tcp/localhost/9000 && echo -e 'GET /health/ready HTTP/1.1\\r\\nHost: localhost\\r\\nConnection: close\\r\\n\\r\\n' >&3 && cat <&3 | grep -q '200 OK'"]
+      interval: 15s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  control-plane-pg:

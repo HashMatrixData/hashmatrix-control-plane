@@ -1,0 +1,20 @@
+# 本地独立运行/调试 profile：配合 docker-compose.local.yml（PostgreSQL + Keycloak）。
+# 启动：docker compose -f docker-compose.local.yml up -d
+#       SPRING_PROFILES_ACTIVE=local mvn spring-boot:run
+spring:
+  datasource:
+    url: jdbc:postgresql://localhost:5432/control_plane
+    username: control_plane
+    password: control_plane
+
+hashmatrix:
+  control-plane:
+    provisioning:
+      # 本地无 K8s 集群时用 stub 跑通开通时序；接好 kind/真实集群后切真实适配器。
+      mode: stub
+
+# 本地放开健康详情，便于调试。
+management:
+  endpoint:
+    health:
+      show-details: always
