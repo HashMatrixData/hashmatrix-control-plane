@@ -1,0 +1,154 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+  <modelVersion>4.0.0</modelVersion>
+
+  <!--
+    控制平面子仓：以「Maven 坐标」引用主仓公共依赖，不依赖 submodule 路径。
+    <relativePath/> 留空 = 强制从制品仓解析 parent，故只 clone 本仓、能访问制品仓即可 `mvn package`。
+    制品仓接入（GitHub Packages / 内网私服）见 libs-java/README「访问制品仓」。
+  -->
+  <parent>
+    <groupId>io.hashmatrix</groupId>
+    <artifactId>hashmatrix-platform-parent</artifactId>
+    <version>0.1.0</version>
+    <relativePath/>
+  </parent>
+
+  <groupId>io.hashmatrix</groupId>
+  <artifactId>control-plane</artifactId>
+  <version>0.1.0-SNAPSHOT</version>
+  <packaging>jar</packaging>
+
+  <name>control-plane</name>
+  <description>
+    多租户控制平面：租户注册 / 开通编排（provision）/ 生命周期 / 配额 / 租户目录。
+    经 Keycloak Admin API + Helm SDK + Kubernetes client 命令式开通租户（生产期不耦合 Git/Argo）。
+  </description>
+  <url>https://github.com/HashMatrixData/hashmatrix-control-plane</url>
+
+  <properties>
+    <!-- 本服务为终端应用，不发布制品到 Maven 仓库 -->
+    <maven.deploy.skip>true</maven.deploy.skip>
+    <!--
+      spring-boot-maven-plugin 版本：BOM（import scope）只带 dependencyManagement，不带 pluginManagement，
+      故 fat-jar 插件版本须自钉，**对齐 BOM 的 spring-boot.version**（升级随 BOM 同步改此一行）。
+    -->
+    <spring-boot.version>3.3.5</spring-boot.version>
+  </properties>
+
+  <dependencyManagement>
+    <dependencies>
+      <!-- 开发框架版本唯一来源：import hashmatrix-bom（与 <parent> 配合，子仓标准接入姿势） -->
+      <dependency>
+        <groupId>io.hashmatrix</groupId>
+        <artifactId>hashmatrix-bom</artifactId>
+        <version>0.2.0</version>
+        <type>pom</type>
+        <scope>import</scope>
+      </dependency>
+    </dependencies>
+  </dependencyManagement>
+
+  <dependencies>
+    <!-- 版本均由 BOM 钉死，子仓不写版本号 -->
+    <dependency>
+      <groupId>org.springframework.boot</groupId>
+      <artifactId>spring-boot-starter-web</artifactId>
+    </dependency>
+    <dependency>
+      <groupId>org.springframework.boot</groupId>
+      <artifactId>spring-boot-starter-validation</artifactId>
+    </dependency>
+    <dependency>
+      <groupId>org.springframework.boot</groupId>
+      <artifactId>spring-boot-starter-data-jpa</artifactId>
+    </dependency>
+    <dependency>
+      <groupId>org.springframework.boot</groupId>
+      <artifactId>spring-boot-starter-actuator</artifactId>
+    </dependency>
+
+    <!-- 租户目录持久化（PostgreSQL）+ schema 演进（Flyway） -->
+    <dependency>
+      <groupId>org.postgresql</groupId>
+      <artifactId>postgresql</artifactId>
+      <scope>runtime</scope>
+    </dependency>
+    <dependency>
+      <groupId>org.flywaydb</groupId>
+      <artifactId>flyway-core</artifactId>
+    </dependency>
+    <dependency>
+      <groupId>org.flywaydb</groupId>
+      <artifactId>flyway-database-postgresql</artifactId>
+      <scope>runtime</scope>
+    </dependency>
+
+    <!-- 平台公共能力：租户上下文 + 统一返回/异常 -->
+    <dependency>
+      <groupId>io.hashmatrix</groupId>
+      <artifactId>hashmatrix-starter-tenant</artifactId>
+    </dependency>
+    <dependency>
+      <groupId>io.hashmatrix</groupId>
+      <artifactId>hashmatrix-starter-web</artifactId>
+    </dependency>
+    <!-- 统一审计：AuditEvent + AuditRecorder（默认 slf4j 结构化），事件自动加盖当前租户。 -->
+    <dependency>
+      <groupId>io.hashmatrix</groupId>
+      <artifactId>hashmatrix-starter-audit</artifactId>
+    </dependency>
+    <!-- 可观测：actuator 健康探针 + /actuator/prometheus 指标出口 + 平台公共指标标签。 -->
+    <dependency>
+      <groupId>io.hashmatrix</groupId>
+      <artifactId>hashmatrix-starter-observability</artifactId>
+    </dependency>
+
+    <!-- 统一测试栈（JUnit5 + AssertJ + Mockito + Testcontainers）+ 脱敏 fixtures -->
+    <dependency>
+      <groupId>io.hashmatrix</groupId>
+      <artifactId>hashmatrix-starter-test</artifactId>
+      <scope>test</scope>
+    </dependency>
+    <dependency>
+      <groupId>org.springframework.boot</groupId>
+      <artifactId>spring-boot-starter-test</artifactId>
+      <scope>test</scope>
+    </dependency>
+    <dependency>
+      <groupId>org.testcontainers</groupId>
+      <artifactId>postgresql</artifactId>
+      <scope>test</scope>
+    </dependency>
+    <dependency>
+      <groupId>org.testcontainers</groupId>
+      <artifactId>junit-jupiter</artifactId>
+      <scope>test</scope>
+    </dependency>
+  </dependencies>
+
+  <build>
+    <plugins>
+      <!--
+        可执行 fat-jar：Dockerfile 与本地运行均依赖之。
+        版本对齐 BOM 的 spring-boot.version（由 spring-boot-dependencies 管理，无需显式写版本）。
+      -->
+      <plugin>
+        <groupId>org.springframework.boot</groupId>
+        <artifactId>spring-boot-maven-plugin</artifactId>
+        <version>${spring-boot.version}</version>
+        <executions>
+          <execution>
+            <!-- 绑定 repackage 生成可执行 fat-jar（platform-parent 非 spring-boot-starter-parent，需显式绑定）。 -->
+            <id>repackage</id>
+            <goals>
+              <goal>repackage</goal>
+            </goals>
+          </execution>
+        </executions>
+      </plugin>
+    </plugins>
+  </build>
+</project>

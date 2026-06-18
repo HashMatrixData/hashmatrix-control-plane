@@ -1,0 +1,132 @@
+package io.hashmatrix.controlplane.tenant.service;
+
+import io.hashmatrix.controlplane.provisioning.ProvisioningException;
+import io.hashmatrix.controlplane.provisioning.ProvisioningOrchestrator;
+import io.hashmatrix.controlplane.provisioning.ProvisioningOutcome;
+import io.hashmatrix.controlplane.provisioning.spi.ProvisioningRequest;
+import io.hashmatrix.controlplane.tenant.domain.Tenant;
+import io.hashmatrix.controlplane.tenant.domain.TenantQuota;
+import io.hashmatrix.controlplane.tenant.domain.TenantStatus;
+import io.hashmatrix.controlplane.tenant.repo.TenantRepository;
+import java.util.List;
+import java.util.UUID;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+
+/**
+ * 租户生命周期编排服务 —— 注册 / 审批门控 / 开通 / 挂起恢复 / 注销。
+ *
+ * <p>状态流转一律经聚合根 {@link Tenant#transitionTo}（受 {@link TenantStatus} 转移表守护）；开通编排
+ * 委托 {@link ProvisioningOrchestrator}。开通在本服务内**同步**执行（适配 stub 时序）；接入真实长耗时
+ * 适配器时应改为异步任务 + 状态轮询（PROVISIONING 即「进行中」语义已预留）。
+ */
+@Service
+@Transactional
+public class TenantService {
+
+    private static final Logger log = LoggerFactory.getLogger(TenantService.class);
+
+    private final TenantRepository repository;
+    private final ProvisioningOrchestrator orchestrator;
+
+    public TenantService(TenantRepository repository, ProvisioningOrchestrator orchestrator) {
+        this.repository = repository;
+        this.orchestrator = orchestrator;
+    }
+
+    /** 自助注册：落库为 {@link TenantStatus#REGISTERED}。key 须全局唯一。 */
+    public Tenant register(RegisterTenantCommand command) {
+        if (repository.existsByTenantKey(command.tenantKey())) {
+            throw new TenantKeyConflictException(command.tenantKey());
+        }
+        Tenant tenant =
+                Tenant.register(
+                        command.tenantKey(),
+                        command.displayName(),
+                        command.deliveryMode(),
+                        command.adminEmail(),
+                        TenantQuota.orDefault(command.quota()));
+        Tenant saved = repository.save(tenant);
+        log.info("租户注册 tenantKey={} id={}", saved.getTenantKey(), saved.getId());
+        return saved;
+    }
+
+    /**
+     * 审批通过并开通：{@code REGISTERED → APPROVING → PROVISIONING → ACTIVE}。
+     *
+     * <p>开通失败则回退 {@code PROVISIONING → APPROVING} 并把失败详情写入 statusReason，原样抛出
+     * {@link ProvisioningException} 供上层呈现。
+     *
+     * <p>⚠️ 事务：类级 {@code @Transactional} 默认对 {@link RuntimeException} 回滚——若不抑制，catch 块里
+     * 刚落库的 APPROVING 回退态会随抛出的 {@link ProvisioningException} 一并回滚，租户被悄悄退回 REGISTERED
+     * 且不留痕，与设计相反。故本方法 {@code noRollbackFor = ProvisioningException.class}，使失败回退态如实提交
+     * （开通副作用与目录状态需留痕）。
+     */
+    @Transactional(noRollbackFor = ProvisioningException.class)
+    public Tenant approve(UUID id, String approvalNote) {
+        Tenant tenant = require(id);
+        tenant.transitionTo(TenantStatus.APPROVING, approvalNote);
+        tenant.transitionTo(TenantStatus.PROVISIONING, "审批通过，开始开通");
+        // 先持久化 PROVISIONING，确保「进行中」状态对外可见（即便随后开通抛错）。
+        repository.saveAndFlush(tenant);
+
+        ProvisioningRequest request = ProvisioningRequest.from(tenant);
+        try {
+            ProvisioningOutcome outcome = orchestrator.provision(request);
+            tenant.recordProvisioningOutcome(
+                    outcome.keycloakOrgId(), outcome.namespace(), outcome.dbSchema());
+            tenant.transitionTo(TenantStatus.ACTIVE, "开通完成");
+            return repository.save(tenant);
+        } catch (ProvisioningException e) {
+            tenant.transitionTo(TenantStatus.APPROVING, "开通失败[" + e.getStep() + "]：" + e.getMessage());
+            repository.save(tenant);
+            log.error("租户开通失败 tenantKey={} step={}", tenant.getTenantKey(), e.getStep(), e);
+            throw e;
+        }
+    }
+
+    /** 审批驳回：{@code APPROVING → REGISTERED}，退回草稿。 */
+    public Tenant reject(UUID id, String reason) {
+        Tenant tenant = require(id);
+        tenant.transitionTo(TenantStatus.REGISTERED, "审批驳回：" + reason);
+        return repository.save(tenant);
+    }
+
+    /** 挂起：{@code ACTIVE → SUSPENDED}（停用但保留资源与数据）。 */
+    public Tenant suspend(UUID id, String reason) {
+        Tenant tenant = require(id);
+        tenant.transitionTo(TenantStatus.SUSPENDED, reason);
+        return repository.save(tenant);
+    }
+
+    /** 恢复：{@code SUSPENDED → ACTIVE}。 */
+    public Tenant resume(UUID id) {
+        Tenant tenant = require(id);
+        tenant.transitionTo(TenantStatus.ACTIVE, "恢复启用");
+        return repository.save(tenant);
+    }
+
+    /** 注销：尽力回收资源后置 {@link TenantStatus#DELETED}（终态）。 */
+    public Tenant delete(UUID id, String reason) {
+        Tenant tenant = require(id);
+        orchestrator.deprovision(ProvisioningRequest.from(tenant));
+        tenant.transitionTo(TenantStatus.DELETED, reason);
+        return repository.save(tenant);
+    }
+
+    @Transactional(readOnly = true)
+    public Tenant get(UUID id) {
+        return require(id);
+    }
+
+    @Transactional(readOnly = true)
+    public List<Tenant> list() {
+        return repository.findAll();
+    }
+
+    private Tenant require(UUID id) {
+        return repository.findById(id).orElseThrow(() -> new TenantNotFoundException(id.toString()));
+    }
+}
