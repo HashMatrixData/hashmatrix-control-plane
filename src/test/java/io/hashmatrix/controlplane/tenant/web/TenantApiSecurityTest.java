@@ -6,12 +6,12 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
-import io.hashmatrix.controlplane.security.SecurityConfiguration;
 import io.hashmatrix.controlplane.tenant.domain.DeliveryMode;
 import io.hashmatrix.controlplane.tenant.domain.Tenant;
 import io.hashmatrix.controlplane.tenant.domain.TenantQuota;
 import io.hashmatrix.controlplane.tenant.service.TenantService;
 import io.hashmatrix.starter.security.SecurityAutoConfiguration;
+import io.hashmatrix.starter.security.SecurityFilterChainConfiguration;
 import io.hashmatrix.test.fixtures.MockData;
 import io.hashmatrix.test.fixtures.MockTenants;
 import java.util.List;
@@ -28,7 +28,7 @@ import org.springframework.test.web.servlet.MockMvc;
  * WP2 鉴权矩阵切片测试（Docker-free）—— 守护「网关前置鉴权 + superadmin 门控」验收。
  *
  * <p>只装 MVC + 鉴权 starter（{@link SecurityAutoConfiguration} 提供网关预认证过滤器/配置项，
- * {@link SecurityConfiguration} 提供本仓过滤链；{@code TenantService} 用 {@link MockBean} 顶替，
+ * {@link SecurityFilterChainConfiguration} 提供默认过滤链（含 401 入口，#5 已上收 starter）；{@code TenantService} 用 {@link MockBean} 顶替，
  * 不触 DB），断言授权决策在 controller 之前完成。本机无 Docker 即可运行，与两个 Testcontainers
  * 集成测试（真实持久化）互补。
  *
@@ -36,7 +36,7 @@ import org.springframework.test.web.servlet.MockMvc;
  * 探针 {@code permitPaths} 放行由 {@code ControlPlaneIntegrationTest}（全上下文含 actuator）守护。
  */
 @WebMvcTest(controllers = TenantController.class)
-@Import({SecurityAutoConfiguration.class, SecurityConfiguration.class})
+@Import({SecurityAutoConfiguration.class, SecurityFilterChainConfiguration.class})
 @EnableMethodSecurity
 class TenantApiSecurityTest {
 

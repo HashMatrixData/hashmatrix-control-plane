@@ -13,16 +13,16 @@ import jakarta.validation.constraints.Size;
 /**
  * 自助注册请求体。
  *
- * @param tenantKey 稳定租户标识 = 隔离路由键（schema/catalog/namespace）。须为 DNS-1123 标签子集，
- *     给 {@code tenant-} 前缀留头寸，限长 40。
+ * @param tenantId 稳定租户标识 = 隔离路由键（schema/catalog/namespace）。须为 DNS-1123 标签子集，
+ *     给 {@code tenant-} 前缀留头寸，限长 40。对齐契约 {@code TenantRegistration.tenantId}。
  */
 public record RegisterTenantRequest(
         @NotBlank
                 @Size(max = 40)
                 @Pattern(
                         regexp = "^[a-z0-9]([-a-z0-9]*[a-z0-9])?$",
-                        message = "tenantKey 须为小写字母/数字/连字符（DNS-1123 标签），且不以连字符开头或结尾")
-                String tenantKey,
+                        message = "tenantId 须为小写字母/数字/连字符（DNS-1123 标签），且不以连字符开头或结尾")
+                String tenantId,
         @NotBlank @Size(max = 255) String displayName,
         @NotNull DeliveryMode deliveryMode,
         @NotBlank @Email @Size(max = 320) String adminEmail,
@@ -30,6 +30,6 @@ public record RegisterTenantRequest(
 
     public RegisterTenantCommand toCommand() {
         TenantQuota q = quota == null ? null : quota.toQuota();
-        return new RegisterTenantCommand(tenantKey, displayName, deliveryMode, adminEmail, q);
+        return new RegisterTenantCommand(tenantId, displayName, deliveryMode, adminEmail, q);
     }
 }

@@ -5,12 +5,12 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
-import io.hashmatrix.controlplane.security.SecurityConfiguration;
 import io.hashmatrix.controlplane.tenant.domain.DeliveryMode;
 import io.hashmatrix.controlplane.tenant.domain.Tenant;
 import io.hashmatrix.controlplane.tenant.domain.TenantQuota;
 import io.hashmatrix.controlplane.tenant.service.TenantService;
 import io.hashmatrix.starter.security.SecurityAutoConfiguration;
+import io.hashmatrix.starter.security.SecurityFilterChainConfiguration;
 import io.hashmatrix.test.fixtures.MockData;
 import io.hashmatrix.test.fixtures.MockTenants;
 import java.util.List;
@@ -26,7 +26,7 @@ import org.springframework.test.web.servlet.MockMvc;
  * WP3 切片测试（Docker-free）—— 守护 {@code GET /api/v1/me/tenants}（当前用户 membership 数组）验收。
  *
  * <p>只装 MVC + 鉴权 starter（{@link SecurityAutoConfiguration} 提供网关预认证过滤器，
- * {@link SecurityConfiguration} 提供本仓过滤链；{@code TenantService} 用 {@link MockBean} 顶替，不触 DB），
+ * {@link SecurityFilterChainConfiguration} 提供默认过滤链（含 401 入口，#5 已上收 starter）；{@code TenantService} 用 {@link MockBean} 顶替，不触 DB），
  * 断言端点路径、数组形状与 401。本机无 Docker 即可运行。
  *
  * <p>覆盖验收：① 由<b>独立 {@link MeController}</b> 承载，路径 {@code /api/v1/me/tenants}
@@ -34,7 +34,7 @@ import org.springframework.test.web.servlet.MockMvc;
  * ③ 无头 → 401；④ 无 membership → 空数组（契约「响应一律数组、可为空」）。
  */
 @WebMvcTest(controllers = MeController.class)
-@Import({SecurityAutoConfiguration.class, SecurityConfiguration.class})
+@Import({SecurityAutoConfiguration.class, SecurityFilterChainConfiguration.class})
 @EnableMethodSecurity
 class MeControllerTest {
 
@@ -73,7 +73,7 @@ class MeControllerTest {
                 .andExpect(jsonPath("$.data[0].tenantId").value("tenant-demo"))
                 .andExpect(jsonPath("$.data[0].tenantKey").value("tenant-demo"))
                 .andExpect(jsonPath("$.data[0].displayName").value("Demo 部门"))
-                .andExpect(jsonPath("$.data[0].status").value("REGISTERED"));
+                .andExpect(jsonPath("$.data[0].status").value("registered"));
     }
 
     @Test

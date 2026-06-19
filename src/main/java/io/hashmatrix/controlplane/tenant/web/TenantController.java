@@ -29,7 +29,7 @@ import org.springframework.web.bind.annotation.RestController;
  * 应用<b>不二次校验 token</b>，由 {@code GatewayPreAuthFilter} 还原 SecurityContext。非放行路径默认
  * {@code authenticated()}；跨租户高权变更（{@code approve}/{@code reject}/{@code suspend}/{@code resume}/
  * {@code delete}）经 {@link PreAuthorize} 限平台管理员（{@code SUPERADMIN}）。只读/注册端点仅需已认证主体。
- * 探针/指标（{@code /actuator/health|info|prometheus}）放行——见 {@code SecurityConfiguration}。
+ * 探针/指标（{@code /actuator/health|info|prometheus}）放行——见 starter-security 默认过滤链。
  */
 @RestController
 @RequestMapping("/api/v1/tenants")

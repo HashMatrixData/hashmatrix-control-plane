@@ -75,7 +75,7 @@ class ProvisioningFailureIntegrationTest {
         String body =
                 json.writeValueAsString(
                         Map.of(
-                                "tenantKey", MockTenants.TENANT_DEMO,
+                                "tenantId", MockTenants.TENANT_DEMO,
                                 "displayName", "Demo 部门",
                                 "deliveryMode", "PRIVATE",
                                 "adminEmail", MockData.email("admin")));
@@ -99,7 +99,7 @@ class ProvisioningFailureIntegrationTest {
         // 关键断言：重新查库（独立读），回退态须已提交——APPROVING + 失败留痕。
         mvc.perform(asSuperadmin(get("/api/v1/tenants/" + id)))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.data.status").value("APPROVING"))
+                .andExpect(jsonPath("$.data.status").value("approving"))
                 .andExpect(jsonPath("$.data.statusReason").value(org.hamcrest.Matchers.containsString("compute")));
     }
 }

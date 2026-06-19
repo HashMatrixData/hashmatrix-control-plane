@@ -67,7 +67,7 @@ class ControlPlaneIntegrationTest {
     private String registerBody(String tenantKey) throws Exception {
         return json.writeValueAsString(
                 Map.of(
-                        "tenantKey", tenantKey,
+                        "tenantId", tenantKey,
                         "displayName", "Demo 部门",
                         "deliveryMode", "PRIVATE",
                         "adminEmail", MockData.email("admin")));
@@ -84,8 +84,8 @@ class ControlPlaneIntegrationTest {
                                                 .content(registerBody(MockTenants.TENANT_DEMO))))
                         .andExpect(status().isCreated())
                         .andExpect(jsonPath("$.code").value("0"))
-                        .andExpect(jsonPath("$.data.status").value("REGISTERED"))
-                        .andExpect(jsonPath("$.data.tenantKey").value("tenant-demo"))
+                        .andExpect(jsonPath("$.data.status").value("registered"))
+                        .andExpect(jsonPath("$.data.tenantId").value("tenant-demo"))
                         .andReturn()
                         .getResponse()
                         .getHeader("Location");
@@ -95,7 +95,7 @@ class ControlPlaneIntegrationTest {
         // 审批通过 → 同步开通 → ACTIVE，且回写接入信息（身份/namespace/schema）
         mvc.perform(asSuperadmin(post("/api/v1/tenants/" + id + "/approve")))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.data.status").value("ACTIVE"))
+                .andExpect(jsonPath("$.data.status").value("active"))
                 .andExpect(jsonPath("$.data.keycloakOrgId").value("org-tenant-demo"))
                 .andExpect(jsonPath("$.data.namespace").value("tenant-tenant-demo"))
                 .andExpect(jsonPath("$.data.dbSchema").value("tenant-demo"));
@@ -103,7 +103,7 @@ class ControlPlaneIntegrationTest {
         // 注销 → DELETED 终态
         mvc.perform(asSuperadmin(delete("/api/v1/tenants/" + id)))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.data.status").value("DELETED"));
+                .andExpect(jsonPath("$.data.status").value("deleted"));
     }
 
     @Test
@@ -168,8 +168,8 @@ class ControlPlaneIntegrationTest {
 
     @Test
     void highRiskEndpointRejectsNonSuperadminUnderRealWiring() throws Exception {
-        // 真实生产装配下（方法安全来自 starter 的 @EnableMethodSecurity，本仓 SecurityConfiguration 仅补
-        // 401 entryPoint）守护：已认证但非 superadmin 调高危端点 → 403。授权在 controller 之前完成，
+        // 真实生产装配下（方法安全 + 401 entryPoint 均来自 starter 默认过滤链，#5 已上收 starter-security）
+        // 守护：已认证但非 superadmin 调高危端点 → 403。授权在 controller 之前完成，
         // 无需库中真实租户。补 TenantApiSecurityTest（切片用测试类自带 @EnableMethodSecurity）未覆盖的
         // 「生产装配链路」回归——若 starter 方法安全装配漂移致门控静默失效，本断言兜底。
         mvc.perform(

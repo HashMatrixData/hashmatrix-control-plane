@@ -1,7 +1,10 @@
 package io.hashmatrix.controlplane.tenant.domain;
 
+import com.fasterxml.jackson.annotation.JsonCreator;
+import com.fasterxml.jackson.annotation.JsonValue;
 import java.util.Collections;
 import java.util.EnumMap;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 
@@ -39,6 +42,23 @@ public enum TenantStatus {
     SUSPENDED,
     /** 已注销（终态，资源已回收）。 */
     DELETED;
+
+    /**
+     * 契约序列化：小写枚举名（对齐 openapi {@code TenantStatus} enum：registered/approving/…）。
+     *
+     * <p>仅影响 Jackson（HTTP JSON）；JPA 持久化走 {@code @Enumerated(STRING)} 即 {@link #name()}（大写），
+     * 库内取值不变、无需迁移。
+     */
+    @JsonValue
+    public String toJson() {
+        return name().toLowerCase(Locale.ROOT);
+    }
+
+    /** 反序列化容忍大小写（tolerant reader）；{@code null} 透传由上层校验处理。 */
+    @JsonCreator
+    public static TenantStatus fromJson(String value) {
+        return value == null ? null : valueOf(value.toUpperCase(Locale.ROOT));
+    }
 
     private static final Map<TenantStatus, Set<TenantStatus>> ALLOWED =
             new EnumMap<>(TenantStatus.class);

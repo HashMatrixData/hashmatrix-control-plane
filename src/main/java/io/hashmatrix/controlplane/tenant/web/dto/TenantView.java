@@ -9,7 +9,7 @@ import java.util.UUID;
 /** 租户对外视图（脱敏：仅暴露目录与接入信息，不含任何凭据）。 */
 public record TenantView(
         UUID id,
-        String tenantKey,
+        String tenantId,
         String displayName,
         DeliveryMode deliveryMode,
         TenantStatus status,
