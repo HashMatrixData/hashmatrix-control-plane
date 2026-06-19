@@ -50,10 +50,10 @@
 - producer：`openapi/control-plane-v1`（北向 API：租户注册/审批/开通状态/生命周期/配额查询 + `/v1/me/tenants`）、`icd/control-plane-provisioning`（租户目录状态机 + 外呼开通边界：Keycloak/Helm/datastore/ESO，仅契约）。
 - consumer：`icd/tenant-context-headers`
 
-> ⚠️ **已知契约↔实现漂移（known-drift / follow-up，本次不 reconcile）**：声明 producer 时一并登记，待后续 PR 按「先改契约」铁律对齐——
-> 1. **审批端点形态**：契约为单端点 `POST /v1/tenants/{id}/approval`（`action: approve|reject`，其中 `reject→deleted`）；实现为 `/approve` + `/reject` 两端点且 `reject→registered`。
-> 2. **`/api` 前缀约定**：实现统一 `/api/v1/...`，契约为 `/v1/...`（推定网关 strip `/api` 前缀，但契约/网关侧尚未写明，需补一条约定，否则消费方对不上）。
-> 3. **`Tenant`/`TenantView` 结构差异（路由键名 + status 大小写已对齐，余项 follow-up）**：路由键字段 `tenantKey→tenantId`（请求/响应双侧）、`status` 序列化小写（`TenantStatus` `@JsonValue`，跨所有端点；JPA 仍 `name()` 大写入库）已对齐契约。**剩余待对齐**（需与 webui 消费方协同，非本次）：`organization{orgId,orgAlias}`/`dataPlane{namespace,dbSchema,dorisCatalog,helmRelease}` 嵌套（impl 为扁平 `keycloakOrgId`/`namespace`/`dbSchema`）、quota 字段名（impl `maxDataBytes`/`maxJobs` vs 契约 `maxStorageGi`/`maxConcurrentJobs`+`compute`）、impl 专有字段（`id`/`deliveryMode`/`adminEmail`/`statusReason` 不在契约 `Tenant`）、注册体 `deliveryMode`/`quota`（契约 `requestedQuota`、无 deliveryMode）。
+> ✅ **契约↔实现结构性漂移已 reconcile（#9，契约 `control-plane-v1` v1.2.0）**：原三条 known-drift 均按「先改契约」铁律对齐，已清账——
+> 1. **审批端点形态**：实现已收敛为契约单端点 `POST /v1/tenants/{tenantId}/approval`（`decision: approve|reject`，`reject→deleted` 终态、reason 必填）；原 `/approve`+`/reject` 双端点（`reject→registered`）已移除。
+> 2. **`/api` 前缀约定**：契约 `info.description` 已写明「网关 strip 部署级 `/api`，对外为 `/v1/...`」；实现保持应用内 `/api/v1/...`。
+> 3. **`Tenant`/`TenantView` 结构**：已全面对齐——单租户端点改 `{tenantId}` 路由键寻址（内部 UUID 不出边界）；`organization{orgId,orgAlias}`/`dataPlane{namespace,dbSchema,dorisCatalog,helmRelease}` 嵌套；quota 改 `maxStorageGi`/`maxConcurrentJobs`+`compute`（领域+DB 迁移 V2，字节→GiB）；`deliveryMode` 上收为部署级配置（不入注册体/视图）、`id`/`adminEmail` 不出视图；`statusReason` 已纳入契约 `Tenant`（加法）；注册体改 `requestedQuota`。webui 消费方侧字段对接经 cross-ask 协同。
 
 **如何查阅（随时拉最新，勿存本地副本）**：
 - 在 superproject（`hashmatrix/services/<本仓>`）下：直接读 `../../contracts/`。

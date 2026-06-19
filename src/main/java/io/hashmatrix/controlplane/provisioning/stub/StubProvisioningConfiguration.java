@@ -71,11 +71,13 @@ public class StubProvisioningConfiguration {
             public String provision(ProvisioningRequest request) {
                 String namespace = TenantNaming.namespace(request.tenantKey());
                 log.info(
-                        "[stub:compute] 渲染并应用 per-tenant release ns={} quota(users={},bytes={},jobs={})",
+                        "[stub:compute] 渲染并应用 per-tenant release ns={} quota(users={},storageGi={},jobs={},cpu={},memGi={})",
                         namespace,
                         request.quota().maxUsers(),
-                        request.quota().maxDataBytes(),
-                        request.quota().maxJobs());
+                        request.quota().maxStorageGi(),
+                        request.quota().maxConcurrentJobs(),
+                        request.quota().computeCpuCores(),
+                        request.quota().computeMemoryGi());
                 return namespace;
             }
 

@@ -98,14 +98,13 @@ class SecurityMatrixIntegrationTest {
         return builder.header("X-User", "ops-admin").header("X-Roles", "SUPERADMIN");
     }
 
-    /** 全部高危端点（跨租户高权变更，须 {@code SUPERADMIN}）。 */
+    /** 全部高危端点（跨租户高权变更，须 {@code SUPERADMIN}）。审批为单端点 {@code /approval}（对齐契约）。 */
     static Stream<Arguments> highRiskEndpoints() {
         return Stream.of(
-                arguments("POST .../approve", post(TENANTS + "/" + DUMMY_ID + "/approve")),
-                arguments("POST .../reject", post(TENANTS + "/" + DUMMY_ID + "/reject")),
+                arguments("POST .../approval", post(TENANTS + "/" + DUMMY_ID + "/approval")),
                 arguments("POST .../suspend", post(TENANTS + "/" + DUMMY_ID + "/suspend")),
                 arguments("POST .../resume", post(TENANTS + "/" + DUMMY_ID + "/resume")),
-                arguments("DELETE .../{id}", delete(TENANTS + "/" + DUMMY_ID)));
+                arguments("DELETE .../{tenantId}", delete(TENANTS + "/" + DUMMY_ID)));
     }
 
     /** 全部需认证端点（高危 + 只读 + 注册 + WP3 自助视图）——匿名一律 401。 */
@@ -174,7 +173,6 @@ class SecurityMatrixIntegrationTest {
                         Map.of(
                                 "tenantId", MockTenants.TENANT_DEMO,
                                 "displayName", "Demo 部门",
-                                "deliveryMode", "PRIVATE",
                                 "adminEmail", MockData.email("admin")));
         String location =
                 mvc.perform(
@@ -189,9 +187,13 @@ class SecurityMatrixIntegrationTest {
                         .getResponse()
                         .getHeader("Location");
         assertNotNull(location, "注册响应应带 Location 头");
-        String id = location.substring(location.lastIndexOf('/') + 1);
+        String tenantId = location.substring(location.lastIndexOf('/') + 1);
 
-        mvc.perform(asSuperadmin(post(TENANTS + "/" + id + "/approve")))
+        mvc.perform(
+                        asSuperadmin(
+                                post(TENANTS + "/" + tenantId + "/approval")
+                                        .contentType(MediaType.APPLICATION_JSON)
+                                        .content("{\"decision\":\"approve\"}")))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.status").value("active"));
     }

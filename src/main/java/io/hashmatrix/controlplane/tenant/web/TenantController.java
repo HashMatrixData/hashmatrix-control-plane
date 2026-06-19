@@ -2,6 +2,7 @@ package io.hashmatrix.controlplane.tenant.web;
 
 import io.hashmatrix.controlplane.tenant.domain.Tenant;
 import io.hashmatrix.controlplane.tenant.service.TenantService;
+import io.hashmatrix.controlplane.tenant.web.dto.ApprovalRequest;
 import io.hashmatrix.controlplane.tenant.web.dto.ReasonRequest;
 import io.hashmatrix.controlplane.tenant.web.dto.RegisterTenantRequest;
 import io.hashmatrix.controlplane.tenant.web.dto.TenantView;
@@ -9,7 +10,6 @@ import io.hashmatrix.starter.web.ApiResponse;
 import jakarta.validation.Valid;
 import java.net.URI;
 import java.util.List;
-import java.util.UUID;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.DeleteMapping;
@@ -25,10 +25,14 @@ import org.springframework.web.bind.annotation.RestController;
  *
  * <p>统一返回 {@link ApiResponse}（starter-web）；领域异常由 {@link TenantExceptionHandler} 映射状态码。
  *
+ * <p><b>寻址键</b>：单租户端点一律以稳定路由键 {@code {tenantId}}（= 契约 {@code tenantId} / {@code X-Tenant-Id}）
+ * 寻址，内部 UUID 不出对外边界（对齐契约 {@code openapi/control-plane-v1}）。类级 {@code /api/v1/tenants}
+ * （网关 strip {@code /api} → 契约 {@code /v1/tenants}）。
+ *
  * <p>鉴权模型（starter-security · 网关前置）：网关完成 OIDC 校验后下发 {@code X-User}/{@code X-Roles}，
  * 应用<b>不二次校验 token</b>，由 {@code GatewayPreAuthFilter} 还原 SecurityContext。非放行路径默认
- * {@code authenticated()}；跨租户高权变更（{@code approve}/{@code reject}/{@code suspend}/{@code resume}/
- * {@code delete}）经 {@link PreAuthorize} 限平台管理员（{@code SUPERADMIN}）。只读/注册端点仅需已认证主体。
+ * {@code authenticated()}；跨租户高权变更（{@code approval}/{@code suspend}/{@code resume}/{@code delete}）
+ * 经 {@link PreAuthorize} 限平台管理员（{@code SUPERADMIN}）。只读/注册端点仅需已认证主体。
  * 探针/指标（{@code /actuator/health|info|prometheus}）放行——见 starter-security 默认过滤链。
  */
 @RestController
@@ -49,7 +53,7 @@ public class TenantController {
     public ResponseEntity<ApiResponse<TenantView>> register(
             @Valid @RequestBody RegisterTenantRequest request) {
         Tenant tenant = service.register(request.toCommand());
-        return ResponseEntity.created(URI.create("/api/v1/tenants/" + tenant.getId()))
+        return ResponseEntity.created(URI.create("/api/v1/tenants/" + tenant.getTenantKey()))
                 .body(ApiResponse.ok(TenantView.from(tenant)));
     }
 
@@ -58,49 +62,56 @@ public class TenantController {
         return ApiResponse.ok(service.list().stream().map(TenantView::from).toList());
     }
 
-    @GetMapping("/{id}")
-    public ApiResponse<TenantView> get(@PathVariable UUID id) {
-        return ApiResponse.ok(TenantView.from(service.get(id)));
+    @GetMapping("/{tenantId}")
+    public ApiResponse<TenantView> get(@PathVariable String tenantId) {
+        return ApiResponse.ok(TenantView.from(service.get(tenantId)));
     }
 
-    /** 审批通过并触发开通（同步走完开通时序，返回 ACTIVE 或失败详情）。 */
+    /**
+     * 审批裁决（单端点，对齐契约 {@code POST /{tenantId}/approval}）：
+     * {@code approve} → 同步走完开通时序（返回 ACTIVE 或失败详情）；{@code reject} → 置 {@code deleted}（终态）。
+     * 契约约束：{@code reject} 时 {@code reason} 必填（驳回不可逆，须留审计）。
+     */
     @PreAuthorize(REQUIRE_SUPERADMIN)
-    @PostMapping("/{id}/approve")
-    public ApiResponse<TenantView> approve(
-            @PathVariable UUID id, @Valid @RequestBody(required = false) ReasonRequest body) {
-        String note = body == null ? "审批通过" : body.reasonOrDefault("审批通过");
-        return ApiResponse.ok(TenantView.from(service.approve(id, note)));
+    @PostMapping("/{tenantId}/approval")
+    public ApiResponse<TenantView> decideApproval(
+            @PathVariable String tenantId, @Valid @RequestBody(required = false) ApprovalRequest body) {
+        if (body == null || body.decision() == null) {
+            throw new InvalidApprovalRequestException("approval 须提供 decision（approve|reject）");
+        }
+        Tenant tenant;
+        if (body.isReject()) {
+            if (body.reason() == null || body.reason().isBlank()) {
+                throw new InvalidApprovalRequestException("驳回（reject）须填写 reason（留审计）");
+            }
+            tenant = service.reject(tenantId, body.reason());
+        } else {
+            String note = body.reason() == null || body.reason().isBlank() ? "审批通过" : body.reason();
+            tenant = service.approve(tenantId, note);
+        }
+        return ApiResponse.ok(TenantView.from(tenant));
     }
 
-    /** 审批驳回。 */
     @PreAuthorize(REQUIRE_SUPERADMIN)
-    @PostMapping("/{id}/reject")
-    public ApiResponse<TenantView> reject(
-            @PathVariable UUID id, @Valid @RequestBody(required = false) ReasonRequest body) {
-        String reason = body == null ? "未说明" : body.reasonOrDefault("未说明");
-        return ApiResponse.ok(TenantView.from(service.reject(id, reason)));
-    }
-
-    @PreAuthorize(REQUIRE_SUPERADMIN)
-    @PostMapping("/{id}/suspend")
+    @PostMapping("/{tenantId}/suspend")
     public ApiResponse<TenantView> suspend(
-            @PathVariable UUID id, @Valid @RequestBody(required = false) ReasonRequest body) {
+            @PathVariable String tenantId, @Valid @RequestBody(required = false) ReasonRequest body) {
         String reason = body == null ? "管理员挂起" : body.reasonOrDefault("管理员挂起");
-        return ApiResponse.ok(TenantView.from(service.suspend(id, reason)));
+        return ApiResponse.ok(TenantView.from(service.suspend(tenantId, reason)));
     }
 
     @PreAuthorize(REQUIRE_SUPERADMIN)
-    @PostMapping("/{id}/resume")
-    public ApiResponse<TenantView> resume(@PathVariable UUID id) {
-        return ApiResponse.ok(TenantView.from(service.resume(id)));
+    @PostMapping("/{tenantId}/resume")
+    public ApiResponse<TenantView> resume(@PathVariable String tenantId) {
+        return ApiResponse.ok(TenantView.from(service.resume(tenantId)));
     }
 
     /** 注销（尽力回收资源后置 DELETED 终态）。 */
     @PreAuthorize(REQUIRE_SUPERADMIN)
-    @DeleteMapping("/{id}")
+    @DeleteMapping("/{tenantId}")
     public ApiResponse<TenantView> delete(
-            @PathVariable UUID id, @Valid @RequestBody(required = false) ReasonRequest body) {
+            @PathVariable String tenantId, @Valid @RequestBody(required = false) ReasonRequest body) {
         String reason = body == null ? "管理员注销" : body.reasonOrDefault("管理员注销");
-        return ApiResponse.ok(TenantView.from(service.delete(id, reason)));
+        return ApiResponse.ok(TenantView.from(service.delete(tenantId, reason)));
     }
 }

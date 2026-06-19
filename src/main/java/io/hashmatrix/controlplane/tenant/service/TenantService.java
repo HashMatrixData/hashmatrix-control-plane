@@ -4,14 +4,15 @@ import io.hashmatrix.controlplane.provisioning.ProvisioningException;
 import io.hashmatrix.controlplane.provisioning.ProvisioningOrchestrator;
 import io.hashmatrix.controlplane.provisioning.ProvisioningOutcome;
 import io.hashmatrix.controlplane.provisioning.spi.ProvisioningRequest;
+import io.hashmatrix.controlplane.tenant.domain.DeliveryMode;
 import io.hashmatrix.controlplane.tenant.domain.Tenant;
 import io.hashmatrix.controlplane.tenant.domain.TenantQuota;
 import io.hashmatrix.controlplane.tenant.domain.TenantStatus;
 import io.hashmatrix.controlplane.tenant.repo.TenantRepository;
 import java.util.List;
-import java.util.UUID;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -21,6 +22,9 @@ import org.springframework.transaction.annotation.Transactional;
  * <p>状态流转一律经聚合根 {@link Tenant#transitionTo}（受 {@link TenantStatus} 转移表守护）；开通编排
  * 委托 {@link ProvisioningOrchestrator}。开通在本服务内**同步**执行（适配 stub 时序）；接入真实长耗时
  * 适配器时应改为异步任务 + 状态轮询（PROVISIONING 即「进行中」语义已预留）。
+ *
+ * <p><b>寻址键</b>：单租户操作一律以稳定路由键 {@code tenantKey}（= 契约 {@code tenantId} / {@code X-Tenant-Id}）
+ * 寻址，内部 UUID 不出对外边界（对齐契约 {@code /v1/tenants/{tenantId}}）。
  */
 @Service
 @Transactional
@@ -30,13 +34,19 @@ public class TenantService {
 
     private final TenantRepository repository;
     private final ProvisioningOrchestrator orchestrator;
+    /** 部署级交付形态（一个部署整体 SaaS 或私有化，非按租户）；注册时统一落到聚合根。 */
+    private final DeliveryMode deliveryMode;
 
-    public TenantService(TenantRepository repository, ProvisioningOrchestrator orchestrator) {
+    public TenantService(
+            TenantRepository repository,
+            ProvisioningOrchestrator orchestrator,
+            @Value("${hashmatrix.control-plane.delivery-mode:PRIVATE}") DeliveryMode deliveryMode) {
         this.repository = repository;
         this.orchestrator = orchestrator;
+        this.deliveryMode = deliveryMode;
     }
 
-    /** 自助注册：落库为 {@link TenantStatus#REGISTERED}。key 须全局唯一。 */
+    /** 自助注册：落库为 {@link TenantStatus#REGISTERED}。key 须全局唯一；交付形态据部署配置注入。 */
     public Tenant register(RegisterTenantCommand command) {
         if (repository.existsByTenantKey(command.tenantKey())) {
             throw new TenantKeyConflictException(command.tenantKey());
@@ -45,7 +55,7 @@ public class TenantService {
                 Tenant.register(
                         command.tenantKey(),
                         command.displayName(),
-                        command.deliveryMode(),
+                        deliveryMode,
                         command.adminEmail(),
                         TenantQuota.orDefault(command.quota()));
         Tenant saved = repository.save(tenant);
@@ -65,8 +75,8 @@ public class TenantService {
      * （开通副作用与目录状态需留痕）。
      */
     @Transactional(noRollbackFor = ProvisioningException.class)
-    public Tenant approve(UUID id, String approvalNote) {
-        Tenant tenant = require(id);
+    public Tenant approve(String tenantKey, String approvalNote) {
+        Tenant tenant = require(tenantKey);
         tenant.transitionTo(TenantStatus.APPROVING, approvalNote);
         tenant.transitionTo(TenantStatus.PROVISIONING, "审批通过，开始开通");
         // 先持久化 PROVISIONING，确保「进行中」状态对外可见（即便随后开通抛错）。
@@ -87,38 +97,41 @@ public class TenantService {
         }
     }
 
-    /** 审批驳回：{@code APPROVING → REGISTERED}，退回草稿。 */
-    public Tenant reject(UUID id, String reason) {
-        Tenant tenant = require(id);
-        tenant.transitionTo(TenantStatus.REGISTERED, "审批驳回：" + reason);
+    /**
+     * 审批驳回：置 {@link TenantStatus#DELETED}（终态，关闭，带 reason）——对齐契约 {@code reject → deleted}
+     * （驳回不可逆，须留审计）。允许态 {@code REGISTERED}/{@code APPROVING}（转移表均许 {@code → DELETED}）。
+     */
+    public Tenant reject(String tenantKey, String reason) {
+        Tenant tenant = require(tenantKey);
+        tenant.transitionTo(TenantStatus.DELETED, "审批驳回：" + reason);
         return repository.save(tenant);
     }
 
     /** 挂起：{@code ACTIVE → SUSPENDED}（停用但保留资源与数据）。 */
-    public Tenant suspend(UUID id, String reason) {
-        Tenant tenant = require(id);
+    public Tenant suspend(String tenantKey, String reason) {
+        Tenant tenant = require(tenantKey);
         tenant.transitionTo(TenantStatus.SUSPENDED, reason);
         return repository.save(tenant);
     }
 
     /** 恢复：{@code SUSPENDED → ACTIVE}。 */
-    public Tenant resume(UUID id) {
-        Tenant tenant = require(id);
+    public Tenant resume(String tenantKey) {
+        Tenant tenant = require(tenantKey);
         tenant.transitionTo(TenantStatus.ACTIVE, "恢复启用");
         return repository.save(tenant);
     }
 
     /** 注销：尽力回收资源后置 {@link TenantStatus#DELETED}（终态）。 */
-    public Tenant delete(UUID id, String reason) {
-        Tenant tenant = require(id);
+    public Tenant delete(String tenantKey, String reason) {
+        Tenant tenant = require(tenantKey);
         orchestrator.deprovision(ProvisioningRequest.from(tenant));
         tenant.transitionTo(TenantStatus.DELETED, reason);
         return repository.save(tenant);
     }
 
     @Transactional(readOnly = true)
-    public Tenant get(UUID id) {
-        return require(id);
+    public Tenant get(String tenantKey) {
+        return require(tenantKey);
     }
 
     @Transactional(readOnly = true)
@@ -139,7 +152,9 @@ public class TenantService {
         return repository.findByAdminEmail(userIdentity);
     }
 
-    private Tenant require(UUID id) {
-        return repository.findById(id).orElseThrow(() -> new TenantNotFoundException(id.toString()));
+    private Tenant require(String tenantKey) {
+        return repository
+                .findByTenantKey(tenantKey)
+                .orElseThrow(() -> new TenantNotFoundException(tenantKey));
     }
 }

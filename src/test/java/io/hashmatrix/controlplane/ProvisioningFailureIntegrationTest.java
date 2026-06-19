@@ -77,7 +77,6 @@ class ProvisioningFailureIntegrationTest {
                         Map.of(
                                 "tenantId", MockTenants.TENANT_DEMO,
                                 "displayName", "Demo 部门",
-                                "deliveryMode", "PRIVATE",
                                 "adminEmail", MockData.email("admin")));
         String location =
                 mvc.perform(
@@ -89,15 +88,19 @@ class ProvisioningFailureIntegrationTest {
                         .andReturn()
                         .getResponse()
                         .getHeader("Location");
-        String id = location.substring(location.lastIndexOf('/') + 1);
+        String tenantId = location.substring(location.lastIndexOf('/') + 1);
 
         // 开通在 compute 步失败 → 502。
-        mvc.perform(asSuperadmin(post("/api/v1/tenants/" + id + "/approve")))
+        mvc.perform(
+                        asSuperadmin(
+                                post("/api/v1/tenants/" + tenantId + "/approval")
+                                        .contentType(MediaType.APPLICATION_JSON)
+                                        .content("{\"decision\":\"approve\"}")))
                 .andExpect(status().isBadGateway())
                 .andExpect(jsonPath("$.code").value("PROVISIONING_FAILED"));
 
         // 关键断言：重新查库（独立读），回退态须已提交——APPROVING + 失败留痕。
-        mvc.perform(asSuperadmin(get("/api/v1/tenants/" + id)))
+        mvc.perform(asSuperadmin(get("/api/v1/tenants/" + tenantId)))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.status").value("approving"))
                 .andExpect(jsonPath("$.data.statusReason").value(org.hamcrest.Matchers.containsString("compute")));

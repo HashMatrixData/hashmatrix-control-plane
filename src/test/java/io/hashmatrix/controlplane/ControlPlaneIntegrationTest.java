@@ -31,6 +31,9 @@ import org.testcontainers.junit.jupiter.Testcontainers;
  * namespace + schema/db + secrets），并校验状态机非法流转与 key 冲突的边界。无活集群——开通走
  * stub 时序（{@code provisioning.mode=stub} 默认）。
  *
+ * <p>端点一律以路由键 {@code tenantId}（= tenantKey）寻址；审批走单端点 {@code POST /{tenantId}/approval}
+ * （{@code decision=approve|reject}）；视图结构对齐契约（嵌套 {@code organization}/{@code dataPlane}）。
+ *
  * <p>鉴权（starter-security）：加 {@code starter-security} 后非放行路径默认需认证，故全部请求带上网关
  * 下发的 {@code X-User}/{@code X-Roles: SUPERADMIN}（经 {@link #asSuperadmin}）——既满足只读端点的
  * {@code authenticated()}，也满足高危端点的 {@code SUPERADMIN} 门控；细粒度鉴权矩阵（401/403）由
@@ -57,6 +60,9 @@ class ControlPlaneIntegrationTest {
         registry.add("spring.datasource.password", POSTGRES::getPassword);
     }
 
+    /** 审批通过请求体（单端点 {@code /approval}，对齐契约 {@code ApprovalDecision}）。 */
+    private static final String APPROVE_BODY = "{\"decision\":\"approve\"}";
+
     @Autowired private MockMvc mvc;
     @Autowired private ObjectMapper json;
 
@@ -65,18 +71,18 @@ class ControlPlaneIntegrationTest {
         return builder.header("X-User", "ops-admin").header("X-Roles", "SUPERADMIN");
     }
 
+    /** 注册体不含 {@code deliveryMode}（部署级、非按租户）。 */
     private String registerBody(String tenantKey) throws Exception {
         return json.writeValueAsString(
                 Map.of(
                         "tenantId", tenantKey,
                         "displayName", "Demo 部门",
-                        "deliveryMode", "PRIVATE",
                         "adminEmail", MockData.email("admin")));
     }
 
     @Test
     void selfRegisterThenApproveProvisionsTenantEndToEnd() throws Exception {
-        // 自助注册 → REGISTERED
+        // 自助注册 → REGISTERED；Location 以路由键寻址（/api/v1/tenants/{tenantId}）。
         String location =
                 mvc.perform(
                                 asSuperadmin(
@@ -91,18 +97,23 @@ class ControlPlaneIntegrationTest {
                         .getResponse()
                         .getHeader("Location");
 
-        String id = location.substring(location.lastIndexOf('/') + 1);
+        String tenantId = location.substring(location.lastIndexOf('/') + 1);
 
-        // 审批通过 → 同步开通 → ACTIVE，且回写接入信息（身份/namespace/schema）
-        mvc.perform(asSuperadmin(post("/api/v1/tenants/" + id + "/approve")))
+        // 审批通过 → 同步开通 → ACTIVE，且回写接入信息（嵌套 organization/dataPlane）。
+        mvc.perform(
+                        asSuperadmin(
+                                post("/api/v1/tenants/" + tenantId + "/approval")
+                                        .contentType(MediaType.APPLICATION_JSON)
+                                        .content(APPROVE_BODY)))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.status").value("active"))
-                .andExpect(jsonPath("$.data.keycloakOrgId").value("org-tenant-demo"))
-                .andExpect(jsonPath("$.data.namespace").value("tenant-tenant-demo"))
-                .andExpect(jsonPath("$.data.dbSchema").value("tenant-demo"));
+                .andExpect(jsonPath("$.data.organization.orgId").value("org-tenant-demo"))
+                .andExpect(jsonPath("$.data.organization.orgAlias").value("tenant-demo"))
+                .andExpect(jsonPath("$.data.dataPlane.namespace").value("tenant-tenant-demo"))
+                .andExpect(jsonPath("$.data.dataPlane.dbSchema").value("tenant-demo"));
 
         // 注销 → DELETED 终态
-        mvc.perform(asSuperadmin(delete("/api/v1/tenants/" + id)))
+        mvc.perform(asSuperadmin(delete("/api/v1/tenants/" + tenantId)))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.status").value("deleted"));
     }
@@ -136,10 +147,10 @@ class ControlPlaneIntegrationTest {
                         .andReturn()
                         .getResponse()
                         .getHeader("Location");
-        String id = location.substring(location.lastIndexOf('/') + 1);
+        String tenantId = location.substring(location.lastIndexOf('/') + 1);
 
         // REGISTERED 直接 resume（→ACTIVE）非法 → 409
-        mvc.perform(asSuperadmin(post("/api/v1/tenants/" + id + "/resume")))
+        mvc.perform(asSuperadmin(post("/api/v1/tenants/" + tenantId + "/resume")))
                 .andExpect(status().isConflict())
                 .andExpect(jsonPath("$.code").value("ILLEGAL_TENANT_TRANSITION"));
     }
@@ -156,9 +167,62 @@ class ControlPlaneIntegrationTest {
 
     @Test
     void getUnknownTenantReturns404() throws Exception {
-        mvc.perform(asSuperadmin(get("/api/v1/tenants/00000000-0000-4000-8000-000000000000")))
+        mvc.perform(asSuperadmin(get("/api/v1/tenants/ghost-tenant")))
                 .andExpect(status().isNotFound())
                 .andExpect(jsonPath("$.code").value("TENANT_NOT_FOUND"));
+    }
+
+    /** 注册并返回路由键（Location 末段 = tenantId）。各测试用独立 key，避免共享容器内 uq_tenant_key 冲突。 */
+    private String registerReturningId(String tenantKey) throws Exception {
+        String location =
+                mvc.perform(
+                                asSuperadmin(
+                                        post("/api/v1/tenants")
+                                                .contentType(MediaType.APPLICATION_JSON)
+                                                .content(registerBody(tenantKey))))
+                        .andExpect(status().isCreated())
+                        .andReturn()
+                        .getResponse()
+                        .getHeader("Location");
+        return location.substring(location.lastIndexOf('/') + 1);
+    }
+
+    /** 审批驳回 → DELETED 终态并留痕（单端点 reject 分支，对齐契约 {@code reject → deleted}）。 */
+    @Test
+    void rejectDeletesTenantWithReason() throws Exception {
+        String tenantId = registerReturningId("tenant-reject");
+        mvc.perform(
+                        asSuperadmin(
+                                post("/api/v1/tenants/" + tenantId + "/approval")
+                                        .contentType(MediaType.APPLICATION_JSON)
+                                        .content("{\"decision\":\"reject\",\"reason\":\"材料不全\"}")))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.status").value("deleted"))
+                .andExpect(
+                        jsonPath("$.data.statusReason")
+                                .value(org.hamcrest.Matchers.containsString("驳回")));
+    }
+
+    /** 契约约束：reject 缺 reason → 400（驳回不可逆，须留审计）。 */
+    @Test
+    void rejectWithoutReasonIsBadRequest() throws Exception {
+        String tenantId = registerReturningId("tenant-rej-noreason");
+        mvc.perform(
+                        asSuperadmin(
+                                post("/api/v1/tenants/" + tenantId + "/approval")
+                                        .contentType(MediaType.APPLICATION_JSON)
+                                        .content("{\"decision\":\"reject\"}")))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("INVALID_APPROVAL"));
+    }
+
+    /** 审批体缺 decision（空体）→ 400（控制器 null 分支，专用异常映射）。 */
+    @Test
+    void approvalWithoutDecisionIsBadRequest() throws Exception {
+        String tenantId = registerReturningId("tenant-no-decision");
+        mvc.perform(asSuperadmin(post("/api/v1/tenants/" + tenantId + "/approval")))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("INVALID_APPROVAL"));
     }
 
     @Test
@@ -173,10 +237,9 @@ class ControlPlaneIntegrationTest {
     void highRiskEndpointRejectsNonSuperadminUnderRealWiring() throws Exception {
         // 真实生产装配下（方法安全 + 401 entryPoint 均来自 starter 默认过滤链，#5 已上收 starter-security）
         // 守护：已认证但非 superadmin 调高危端点 → 403。授权在 controller 之前完成，
-        // 无需库中真实租户。补 TenantApiSecurityTest（切片用测试类自带 @EnableMethodSecurity）未覆盖的
-        // 「生产装配链路」回归——若 starter 方法安全装配漂移致门控静默失效，本断言兜底。
+        // 无需库中真实租户、无需请求体（@PreAuthorize 在 controller 体前拒）。
         mvc.perform(
-                        post("/api/v1/tenants/00000000-0000-4000-8000-000000000000/approve")
+                        post("/api/v1/tenants/ghost-tenant/approval")
                                 .header("X-User", "alice")
                                 .header("X-Roles", "USER"))
                 .andExpect(status().isForbidden());

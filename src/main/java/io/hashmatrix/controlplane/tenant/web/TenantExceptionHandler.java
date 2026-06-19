@@ -25,6 +25,19 @@ public class TenantExceptionHandler {
                 .body(ApiResponse.fail("TENANT_NOT_FOUND", ex.getMessage()));
     }
 
+    /**
+     * 审批请求体跨字段/条件校验失败 → 400（缺 {@code decision}，或 {@code reject} 缺 {@code reason}）。
+     *
+     * <p>精确匹配专用异常而非裸 {@link IllegalArgumentException}：不把编排/适配器内部偶发的 IAE 误判为
+     * 「客户端错误」400（那类应保留为 500/502 服务端语义）。
+     */
+    @ExceptionHandler(InvalidApprovalRequestException.class)
+    public ResponseEntity<ApiResponse<Void>> handleInvalidApproval(
+            InvalidApprovalRequestException ex) {
+        return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+                .body(ApiResponse.fail("INVALID_APPROVAL", ex.getMessage()));
+    }
+
     @ExceptionHandler(TenantKeyConflictException.class)
     public ResponseEntity<ApiResponse<Void>> handleKeyConflict(TenantKeyConflictException ex) {
         return ResponseEntity.status(HttpStatus.CONFLICT)

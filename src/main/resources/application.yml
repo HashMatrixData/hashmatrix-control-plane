@@ -29,6 +29,9 @@ spring:
 # 默认不设 identity → 保持全 stub，现有路径零改动。
 hashmatrix:
   control-plane:
+    # 交付形态（部署级）：一个部署整体为 PUBLIC_SAAS 或 PRIVATE（双模，见架构 05 §1），非按租户选择；
+    # 注册体不含 deliveryMode，由本配置统一推导后落到每个租户。默认 PRIVATE（政企私有化为主）。
+    delivery-mode: ${CONTROL_PLANE_DELIVERY_MODE:PRIVATE}
     provisioning:
       mode: stub
       # identity: keycloak            # 取消注释以启用真实 Keycloak 身份开通
