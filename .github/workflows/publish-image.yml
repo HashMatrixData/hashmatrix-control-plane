@@ -1,0 +1,94 @@
+# 构建并推送控制平面容器镜像到 GitHub Container Registry（ghcr.io）。
+#
+# 触发：打 semver tag（v*.*.*）→ 构建并推送；或手动 workflow_dispatch → 默认 dry-run（仅构建不推）。
+#   仅在发版 tag / 手动触发上运行，**普通 push / PR 不触发**——避免在上游制品（hashmatrix-bom v0.2.0 等）
+#   发布前让 main 的 CI 变红；制品就绪后打 tag 即出镜像。
+#
+# 🔴 红线：制品仓凭据 / Maven settings 一律经仓库 secret 注入，**绝不入库 / 不落镜像层**。
+#   - GHCR 登录用内置 GITHUB_TOKEN（需 packages: write 权限）。
+#   - 解析 hashmatrix-* 私有制品所需的 Maven settings.xml 经仓库 secret MAVEN_SETTINGS_XML 注入：
+#     运行时写入 runner 临时目录，再以 BuildKit secret（id=maven_settings）挂入 docker build
+#     （见 Dockerfile 的 --mount=type=secret）——不写进任何镜像层、不入库。
+name: publish-image
+
+on:
+  push:
+    tags:
+      - 'v*.*.*'
+  workflow_dispatch:
+    inputs:
+      push:
+        description: '推送到 ghcr（false=仅本地构建 dry-run）'
+        type: boolean
+        default: false
+
+concurrency:
+  group: publish-image-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  IMAGE: ghcr.io/hashmatrixdata/control-plane
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: 解析镜像 tag（semver / 短 SHA）
+        id: meta
+        run: |
+          if [ "${GITHUB_REF_TYPE}" = "tag" ]; then
+            version="${GITHUB_REF_NAME#v}"            # v1.2.3 → 1.2.3
+          else
+            version="0.0.0-dev.${GITHUB_SHA::7}"
+          fi
+          {
+            echo "version=${version}"
+            echo "tags=${IMAGE}:${version},${IMAGE}:sha-${GITHUB_SHA::7}"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: 判定是否推送（tag → 推；dispatch → 看输入）
+        id: gate
+        run: |
+          if [ "${GITHUB_REF_TYPE}" = "tag" ]; then
+            echo "push=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "push=${{ inputs.push }}" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: 写入 Maven settings（来自 secret，仅 runner 临时目录）
+        env:
+          MAVEN_SETTINGS_XML: ${{ secrets.MAVEN_SETTINGS_XML }}
+        run: |
+          # 经 env 传入避免 XML 特殊字符/多行被 shell 误解析；未配置该 secret 时写空文件，
+          # 构建会在解析私有制品处显式失败（发版 tag 必须先配置该 secret）。
+          printf '%s' "$MAVEN_SETTINGS_XML" > "${RUNNER_TEMP}/m2-settings.xml"
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Login to ghcr.io
+        if: steps.gate.outputs.push == 'true'
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ./Dockerfile
+          push: ${{ steps.gate.outputs.push == 'true' }}
+          tags: ${{ steps.meta.outputs.tags }}
+          secret-files: |
+            maven_settings=${{ runner.temp }}/m2-settings.xml
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          provenance: false

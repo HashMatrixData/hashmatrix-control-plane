@@ -1,0 +1,18 @@
+# 缩小 docker build 上下文（仅 pom.xml + src 进镜像构建；其余无需上传）。
+# 🔴 红线：避免本地敏感文件（凭据/settings.xml/.env）误入构建上下文或镜像层。
+.git
+.github
+target
+**/target
+*.md
+docs
+.idea
+*.iml
+.vscode
+.DS_Store
+docker-compose*.yml
+# 本地可能存在的凭据/配置（防误入构建上下文）
+**/*.env
+.env*
+**/settings.xml
+**/.m2

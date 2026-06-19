@@ -47,8 +47,12 @@
 **铁律**：先改契约、再改实现；加法兼容默认放行，破坏性走 MAJOR + 弃用期双跑 + 通知消费方；消费方一律 tolerant reader。
 
 **本仓契约**：
-- producer：暂无
+- producer：`openapi/control-plane-v1`（北向 API：租户注册/审批/开通状态/生命周期/配额查询 + `/v1/me/tenants`）、`icd/control-plane-provisioning`（租户目录状态机 + 外呼开通边界：Keycloak/Helm/datastore/ESO，仅契约）。
 - consumer：`icd/tenant-context-headers`
+
+> ⚠️ **已知契约↔实现漂移（known-drift / follow-up，本次不 reconcile）**：声明 producer 时一并登记，待后续 PR 按「先改契约」铁律对齐——
+> 1. **审批端点形态**：契约为单端点 `POST /v1/tenants/{id}/approval`（`action: approve|reject`，其中 `reject→deleted`）；实现为 `/approve` + `/reject` 两端点且 `reject→registered`。
+> 2. **`/api` 前缀约定**：实现统一 `/api/v1/...`，契约为 `/v1/...`（推定网关 strip `/api` 前缀，但契约/网关侧尚未写明，需补一条约定，否则消费方对不上）。
 
 **如何查阅（随时拉最新，勿存本地副本）**：
 - 在 superproject（`hashmatrix/services/<本仓>`）下：直接读 `../../contracts/`。

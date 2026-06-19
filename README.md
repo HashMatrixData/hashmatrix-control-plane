@@ -75,7 +75,7 @@ mvn -q -DskipTests package        # 产出可执行 fat-jar：target/control-pla
 ```bash
 docker compose -f docker-compose.local.yml up -d           # 起依赖（本地脱敏占位口令）
 SPRING_PROFILES_ACTIVE=local mvn spring-boot:run           # 起服务
-curl localhost:8080/actuator/health                        # 健康探针
+curl localhost:9081/actuator/health                        # 健康探针（管理端口 9081；应用面 8081）
 ```
 
 > K8s 不在本地栈内：本地用 kind 或默认 `provisioning.mode=stub` 跑通开通时序。
@@ -110,7 +110,7 @@ mvn verify                        # 含 Testcontainers 集成测试（需 Docker
 
 ## 路线图（issue #1 后续）
 
-- **API 鉴权**：当前端点**未接入认证/鉴权**，仅供 stub/本地与集成测试；上线前接入 Keycloak Bearer 鉴权 + 角色门控（`approve`/`delete` 限平台管理员）。
+- **API 鉴权**：已接入 `starter-security`「网关前置鉴权」——网关校验 token 后下发 `X-User`/`X-Roles`，本仓据此重建安全上下文；高危端点（`approve`/`reject`/`suspend`/`resume`/`delete`）`@PreAuthorize` 限 `SUPERADMIN`，只读端点仅需已认证，探针放行（见 #5）。**剩余**：网关侧真实 OIDC（Keycloak）token 校验接入。
 - 真实 **Keycloak Admin API** 适配器（建 Organization + 管理员 + 可选联邦 AD）。
 - 真实 **Helm SDK + Kubernetes client** 适配器（per-tenant release：namespace/ResourceQuota/NetworkPolicy/服务实例）。
 - 真实**数据开通**（PG schema/db + Doris/Paimon catalog）与 **ESO** secrets 注入。
