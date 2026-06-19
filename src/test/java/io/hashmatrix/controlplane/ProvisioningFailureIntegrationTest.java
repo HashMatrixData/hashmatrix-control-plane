@@ -22,6 +22,7 @@ import org.springframework.http.MediaType;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
 import org.springframework.test.web.servlet.MockMvc;
+import org.springframework.test.web.servlet.request.MockHttpServletRequestBuilder;
 import org.testcontainers.containers.PostgreSQLContainer;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
@@ -61,6 +62,11 @@ class ProvisioningFailureIntegrationTest {
 
     @MockBean private ComputeProvisioner compute;
 
+    /** 给请求盖上网关下发的平台管理员身份头（加 starter-security 后非放行路径默认需认证）。 */
+    private static MockHttpServletRequestBuilder asSuperadmin(MockHttpServletRequestBuilder builder) {
+        return builder.header("X-User", "ops-admin").header("X-Roles", "SUPERADMIN");
+    }
+
     @Test
     void provisioningFailureRevertsToApprovingAndPersistsReason() throws Exception {
         when(compute.provision(any(ProvisioningRequest.class)))
@@ -74,7 +80,11 @@ class ProvisioningFailureIntegrationTest {
                                 "deliveryMode", "PRIVATE",
                                 "adminEmail", MockData.email("admin")));
         String location =
-                mvc.perform(post("/api/v1/tenants").contentType(MediaType.APPLICATION_JSON).content(body))
+                mvc.perform(
+                                asSuperadmin(
+                                        post("/api/v1/tenants")
+                                                .contentType(MediaType.APPLICATION_JSON)
+                                                .content(body)))
                         .andExpect(status().isCreated())
                         .andReturn()
                         .getResponse()
@@ -82,12 +92,12 @@ class ProvisioningFailureIntegrationTest {
         String id = location.substring(location.lastIndexOf('/') + 1);
 
         // 开通在 compute 步失败 → 502。
-        mvc.perform(post("/api/v1/tenants/" + id + "/approve"))
+        mvc.perform(asSuperadmin(post("/api/v1/tenants/" + id + "/approve")))
                 .andExpect(status().isBadGateway())
                 .andExpect(jsonPath("$.code").value("PROVISIONING_FAILED"));
 
         // 关键断言：重新查库（独立读），回退态须已提交——APPROVING + 失败留痕。
-        mvc.perform(get("/api/v1/tenants/" + id))
+        mvc.perform(asSuperadmin(get("/api/v1/tenants/" + id)))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.status").value("APPROVING"))
                 .andExpect(jsonPath("$.data.statusReason").value(org.hamcrest.Matchers.containsString("compute")));

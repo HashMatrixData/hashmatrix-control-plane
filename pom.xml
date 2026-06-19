@@ -111,6 +111,15 @@
       <groupId>io.hashmatrix</groupId>
       <artifactId>hashmatrix-starter-observability</artifactId>
     </dependency>
+    <!--
+      应用侧鉴权：网关前置鉴权模型（GatewayPreAuthFilter 读 X-User/X-Roles，应用不二次校验 token）
+      + 方法级授权（@PreAuthorize）。控制平面承载跨租户高权操作，高危端点限平台管理员（superadmin）。
+      版本由 BOM 钉死，子仓不写版本号。
+    -->
+    <dependency>
+      <groupId>io.hashmatrix</groupId>
+      <artifactId>hashmatrix-starter-security</artifactId>
+    </dependency>
 
     <!--
       身份开通真实适配器：Keycloak Admin REST 客户端（建 Organization + 租户管理员 user）。
