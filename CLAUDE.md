@@ -53,6 +53,7 @@
 > ⚠️ **已知契约↔实现漂移（known-drift / follow-up，本次不 reconcile）**：声明 producer 时一并登记，待后续 PR 按「先改契约」铁律对齐——
 > 1. **审批端点形态**：契约为单端点 `POST /v1/tenants/{id}/approval`（`action: approve|reject`，其中 `reject→deleted`）；实现为 `/approve` + `/reject` 两端点且 `reject→registered`。
 > 2. **`/api` 前缀约定**：实现统一 `/api/v1/...`，契约为 `/v1/...`（推定网关 strip `/api` 前缀，但契约/网关侧尚未写明，需补一条约定，否则消费方对不上）。
+> 3. **`Tenant` 视图字段形态**：实现 `TenantView` 以 `id`（内部 UUID）+ `tenantKey`（路由键）暴露，契约 `Tenant` 的路由键字段名为 `tenantId`；且 `status` 实现序列化为大写枚举名（`ACTIVE`…），契约 enum 为小写。此为**全仓既有、跨所有端点**的形态漂移（含 WP3 的 `MembershipView`，为仓内一致复用 `TenantStatus`，故同样大写）；宜在 starter 层统一收敛，勿在单端点局部修补。
 
 **如何查阅（随时拉最新，勿存本地副本）**：
 - 在 superproject（`hashmatrix/services/<本仓>`）下：直接读 `../../contracts/`。

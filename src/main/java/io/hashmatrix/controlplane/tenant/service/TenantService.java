@@ -126,6 +126,19 @@ public class TenantService {
         return repository.findAll();
     }
 
+    /**
+     * 列出某登录用户的租户 membership（支撑 {@code GET /me/tenants}）。
+     *
+     * <p><b>M1 启发式</b>：尚无 user↔tenant 关联表，以「当前用户身份 == 某租户 {@code adminEmail}」派生
+     * membership。{@code userIdentity} 为网关前置鉴权下发并由 {@code GatewayPreAuthFilter} 还原的主体名
+     * （非裸读 header）。恒返回数组（可空）——对齐 D1（单 User + 多 Org Membership）与契约「响应一律数组」，
+     * 接入真实 Keycloak Organizations membership 后替换查询、上层零改动。
+     */
+    @Transactional(readOnly = true)
+    public List<Tenant> listMembershipsFor(String userIdentity) {
+        return repository.findByAdminEmail(userIdentity);
+    }
+
     private Tenant require(UUID id) {
         return repository.findById(id).orElseThrow(() -> new TenantNotFoundException(id.toString()));
     }
