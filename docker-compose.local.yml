@@ -27,7 +27,9 @@ services:
   keycloak:
     image: quay.io/keycloak/keycloak:25.0
     container_name: control-plane-keycloak
-    command: ["start-dev"]
+    # Organizations 在 25.x 为 preview，须显式开启，否则 control-plane 真实身份适配器
+    # （provisioning.identity=keycloak）调用 organizations API 会 404。默认 stub 路径不受影响。
+    command: ["start-dev", "--features=organization"]
     environment:
       KC_BOOTSTRAP_ADMIN_USERNAME: admin
       KC_BOOTSTRAP_ADMIN_PASSWORD: admin   # 本地占位口令，仅本机使用

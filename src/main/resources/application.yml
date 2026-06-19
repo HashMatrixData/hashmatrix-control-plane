@@ -22,10 +22,25 @@ spring:
 # 控制平面开通编排配置。
 # hashmatrix.control-plane.provisioning.mode=stub（默认）：用日志/空操作适配器模拟开通时序，
 # 无需活集群即可端到端跑通；真实 Keycloak/Helm/K8s/Doris/ESO 适配器接入后切换对应 mode（见 README 路线图）。
+#
+# identity 端口可与全局 mode 解耦地单独切真实适配器：
+#   identity 未设 / =stub → stub 身份适配器；=keycloak → 真实 Keycloak Admin 适配器
+#   （此时 compute/data/secrets 仍随 mode=stub 走 stub，「真 identity + stub 其余」共存）。
+# 默认不设 identity → 保持全 stub，现有路径零改动。
 hashmatrix:
   control-plane:
     provisioning:
       mode: stub
+      # identity: keycloak            # 取消注释以启用真实 Keycloak 身份开通
+      # keycloak:                     # 仅 identity=keycloak 时生效；🔴 红线：以下均为本地脱敏占位、经环境变量覆盖，勿入真实凭据
+      #   server-url: ${KEYCLOAK_SERVER_URL:http://localhost:8180}
+      #   auth-realm: ${KEYCLOAK_AUTH_REALM:master}
+      #   target-realm: ${KEYCLOAK_TARGET_REALM:hashmatrix}
+      #   client-id: ${KEYCLOAK_CLIENT_ID:admin-cli}
+      #   username: ${KEYCLOAK_ADMIN_USER:admin}
+      #   password: ${KEYCLOAK_ADMIN_PASSWORD:admin}
+      #   tenant-admin-role: ${KEYCLOAK_TENANT_ADMIN_ROLE:tenant-admin}
+      #   domain-suffix: ${KEYCLOAK_DOMAIN_SUFFIX:example.com}
 
 management:
   endpoints:

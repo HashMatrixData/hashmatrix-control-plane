@@ -36,6 +36,12 @@
       故 fat-jar 插件版本须自钉，**对齐 BOM 的 spring-boot.version**（升级随 BOM 同步改此一行）。
     -->
     <spring-boot.version>3.3.5</spring-boot.version>
+    <!--
+      Keycloak Admin Client：hashmatrix-bom 未管理此坐标，故在此显式钉版本（子仓唯一例外，注明原因）。
+      版本对齐 Keycloak 25.x 服务端大版本（compose 本地用 25.0；Organizations API 自 25.0 起提供）；
+      服务端大版本升级时随之同步改此一行。仅 provisioning.identity=keycloak 时真正用到（默认 stub 不加载）。
+    -->
+    <keycloak-admin-client.version>25.0.6</keycloak-admin-client.version>
   </properties>
 
   <dependencyManagement>
@@ -104,6 +110,17 @@
     <dependency>
       <groupId>io.hashmatrix</groupId>
       <artifactId>hashmatrix-starter-observability</artifactId>
+    </dependency>
+
+    <!--
+      身份开通真实适配器：Keycloak Admin REST 客户端（建 Organization + 租户管理员 user）。
+      版本由上方 keycloak-admin-client.version 显式钉死（BOM 未管理）。
+      仅当 provisioning.identity=keycloak 时装配对应 Bean；默认 mode=stub 路径不触达此依赖的运行期代码。
+    -->
+    <dependency>
+      <groupId>org.keycloak</groupId>
+      <artifactId>keycloak-admin-client</artifactId>
+      <version>${keycloak-admin-client.version}</version>
     </dependency>
 
     <!-- 统一测试栈（JUnit5 + AssertJ + Mockito + Testcontainers）+ 脱敏 fixtures -->
