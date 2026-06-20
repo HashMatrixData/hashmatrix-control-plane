@@ -15,12 +15,12 @@ import io.hashmatrix.starter.security.SecurityAutoConfiguration;
 import io.hashmatrix.starter.security.SecurityFilterChainConfiguration;
 import io.hashmatrix.test.fixtures.MockData;
 import io.hashmatrix.test.fixtures.MockTenants;
-import java.util.List;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
 import org.springframework.boot.test.mock.mockito.MockBean;
 import org.springframework.context.annotation.Import;
+import org.springframework.data.domain.Page;
 import org.springframework.http.MediaType;
 import org.springframework.security.config.annotation.method.configuration.EnableMethodSecurity;
 import org.springframework.test.web.servlet.MockMvc;
@@ -90,7 +90,7 @@ class TenantApiSecurityTest {
     @Test
     void readOnlyEndpointAllowsAnyAuthenticatedUser() throws Exception {
         // 只读端点仅需已认证（非 superadmin 亦可）。
-        when(service.list()).thenReturn(List.of());
+        when(service.list(any(), any())).thenReturn(Page.empty());
 
         mvc.perform(get(LIST).header("X-User", "alice").header("X-Roles", "USER"))
                 .andExpect(status().isOk());

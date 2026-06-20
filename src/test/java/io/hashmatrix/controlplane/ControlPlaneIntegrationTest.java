@@ -225,6 +225,87 @@ class ControlPlaneIntegrationTest {
                 .andExpect(jsonPath("$.code").value("INVALID_APPROVAL"));
     }
 
+    /** {@code GET /tenants?status=&page=&pageSize=} 返回契约 {@code TenantList} 形态，并服务端按状态过滤（#11）。 */
+    @Test
+    void listFiltersByStatusAndPaginates() throws Exception {
+        registerReturningId("tenant-list-x");
+        registerReturningId("tenant-list-y");
+        // pageSize=1 → 本页 1 条；total 计满足过滤的全部（≥ 本测试新增 2，避免依赖跨用例计数做等值断言）。
+        mvc.perform(asSuperadmin(get("/api/v1/tenants?status=registered&page=1&pageSize=1")))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.page").value(1))
+                .andExpect(jsonPath("$.data.pageSize").value(1))
+                .andExpect(jsonPath("$.data.items.length()").value(1))
+                .andExpect(
+                        jsonPath("$.data.total", org.hamcrest.Matchers.greaterThanOrEqualTo(2)))
+                // 服务端过滤：返回项状态必为请求状态。
+                .andExpect(jsonPath("$.data.items[0].status").value("registered"));
+    }
+
+    /** 非法 {@code ?status} 取值 → 400（转换器抛 IAE，MVC 归一为类型不匹配 400），锁住 Converter Javadoc 承诺。 */
+    @Test
+    void listWithUnknownStatusIsBadRequest() throws Exception {
+        mvc.perform(asSuperadmin(get("/api/v1/tenants?status=bogus")))
+                .andExpect(status().isBadRequest());
+    }
+
+    /** 越界 {@code page}/{@code pageSize} 被钳制（tolerant server）而非报错。 */
+    @Test
+    void listClampsOutOfRangePaging() throws Exception {
+        mvc.perform(asSuperadmin(get("/api/v1/tenants?page=0&pageSize=0")))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.page").value(1))
+                .andExpect(jsonPath("$.data.pageSize").value(1));
+    }
+
+    /** {@code GET /tenants/{id}/quota} 返回 {@code QuotaStatus}（默认配额 spec + M1 no-op 用量省略）（#11）。 */
+    @Test
+    void quotaEndpointReturnsSpecWithUnmeteredUsage() throws Exception {
+        String tenantId = registerReturningId("tenant-quota");
+        mvc.perform(asSuperadmin(get("/api/v1/tenants/" + tenantId + "/quota")))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.tenantId").value("tenant-quota"))
+                .andExpect(jsonPath("$.data.spec.maxUsers").value(50))
+                .andExpect(jsonPath("$.data.spec.maxStorageGi").value(100))
+                .andExpect(jsonPath("$.data.spec.maxConcurrentJobs").value(10))
+                .andExpect(jsonPath("$.data.spec.compute.cpuCores").value(16))
+                .andExpect(jsonPath("$.data.spec.compute.memoryGi").value(64))
+                // usage 存在但 M1 no-op → 各字段省略（NON_NULL），表征「未计量」非「0」。
+                .andExpect(jsonPath("$.data.usage").exists())
+                .andExpect(jsonPath("$.data.usage.users").doesNotExist());
+    }
+
+    /** {@code GET /tenants/{id}/provisioning}：开通完成 → phase=succeeded，四步全 succeeded（#11）。 */
+    @Test
+    void provisioningEndpointReflectsSucceededAfterApprove() throws Exception {
+        String tenantId = registerReturningId("tenant-prov");
+        mvc.perform(
+                        asSuperadmin(
+                                post("/api/v1/tenants/" + tenantId + "/approval")
+                                        .contentType(MediaType.APPLICATION_JSON)
+                                        .content(APPROVE_BODY)))
+                .andExpect(status().isOk());
+        mvc.perform(asSuperadmin(get("/api/v1/tenants/" + tenantId + "/provisioning")))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.tenantId").value("tenant-prov"))
+                .andExpect(jsonPath("$.data.phase").value("succeeded"))
+                .andExpect(jsonPath("$.data.steps.length()").value(4))
+                .andExpect(jsonPath("$.data.steps[0].target").value("keycloak"))
+                .andExpect(jsonPath("$.data.steps[0].status").value("succeeded"))
+                .andExpect(jsonPath("$.data.steps[3].target").value("secrets"))
+                .andExpect(jsonPath("$.data.steps[3].status").value("succeeded"));
+    }
+
+    /** {@code GET /tenants/{id}/provisioning}：未审批（registered）→ phase=pending，步骤全 pending（#11）。 */
+    @Test
+    void provisioningEndpointReflectsPendingBeforeApprove() throws Exception {
+        String tenantId = registerReturningId("tenant-prov-pending");
+        mvc.perform(asSuperadmin(get("/api/v1/tenants/" + tenantId + "/provisioning")))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.phase").value("pending"))
+                .andExpect(jsonPath("$.data.steps[0].status").value("pending"));
+    }
+
     @Test
     void probeEndpointIsNotBlockedBySecurity() throws Exception {
         // permitPaths（探针）放行 = 安全链不拦——无网关身份头不会被 401/403 拒（本上下文未挂载 actuator → 404，

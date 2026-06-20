@@ -13,6 +13,8 @@ import java.util.List;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -134,9 +136,17 @@ public class TenantService {
         return require(tenantKey);
     }
 
+    /**
+     * 分页列出租户目录，可选按状态过滤（支撑 {@code GET /v1/tenants?status=&page=&pageSize=}）。
+     *
+     * @param status 过滤状态；{@code null} 表示不过滤（全量分页）
+     * @param pageable 分页与排序（由控制器据契约 page/pageSize 钳制后构造）
+     */
     @Transactional(readOnly = true)
-    public List<Tenant> list() {
-        return repository.findAll();
+    public Page<Tenant> list(TenantStatus status, Pageable pageable) {
+        return status == null
+                ? repository.findAll(pageable)
+                : repository.findByStatus(status, pageable);
     }
 
     /**

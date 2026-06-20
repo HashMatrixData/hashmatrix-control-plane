@@ -1,15 +1,20 @@
 package io.hashmatrix.controlplane.tenant.web;
 
 import io.hashmatrix.controlplane.tenant.domain.Tenant;
+import io.hashmatrix.controlplane.tenant.domain.TenantStatus;
 import io.hashmatrix.controlplane.tenant.service.TenantService;
 import io.hashmatrix.controlplane.tenant.web.dto.ApprovalRequest;
+import io.hashmatrix.controlplane.tenant.web.dto.ProvisioningStatusView;
+import io.hashmatrix.controlplane.tenant.web.dto.QuotaStatusView;
 import io.hashmatrix.controlplane.tenant.web.dto.ReasonRequest;
 import io.hashmatrix.controlplane.tenant.web.dto.RegisterTenantRequest;
+import io.hashmatrix.controlplane.tenant.web.dto.TenantListView;
 import io.hashmatrix.controlplane.tenant.web.dto.TenantView;
 import io.hashmatrix.starter.web.ApiResponse;
 import jakarta.validation.Valid;
 import java.net.URI;
-import java.util.List;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Sort;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.DeleteMapping;
@@ -18,6 +23,7 @@ import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 /**
@@ -57,14 +63,46 @@ public class TenantController {
                 .body(ApiResponse.ok(TenantView.from(tenant)));
     }
 
+    /**
+     * 分页列出租户目录，可选按 {@code status} 过滤（对齐契约 {@code listTenants} → {@code TenantList}）。
+     *
+     * <p>{@code page}（1 起，默认 1）/ {@code pageSize}（默认 20，契约上限 200）<b>钳制</b>而非拒绝越界值
+     * （tolerant server）。排序按 {@code createdAt} 倒序（新者在前），保证分页稳定。{@code status} 缺省不过滤；
+     * webui admin 待审队列以 {@code status=registered} 服务端过滤，取代 M1 临时的前端客户端过滤。
+     */
     @GetMapping
-    public ApiResponse<List<TenantView>> list() {
-        return ApiResponse.ok(service.list().stream().map(TenantView::from).toList());
+    public ApiResponse<TenantListView> list(
+            @RequestParam(required = false) TenantStatus status,
+            @RequestParam(defaultValue = "1") int page,
+            @RequestParam(defaultValue = "20") int pageSize) {
+        int p = Math.max(1, page);
+        int size = Math.min(200, Math.max(1, pageSize));
+        PageRequest pageable =
+                PageRequest.of(p - 1, size, Sort.by(Sort.Direction.DESC, "createdAt"));
+        return ApiResponse.ok(TenantListView.from(service.list(status, pageable), p, size));
     }
 
     @GetMapping("/{tenantId}")
     public ApiResponse<TenantView> get(@PathVariable String tenantId) {
         return ApiResponse.ok(TenantView.from(service.get(tenantId)));
+    }
+
+    /**
+     * 查询租户配额额度与用量（对齐契约 {@code getTenantQuota} → {@code QuotaStatus}）。只读，仅需已认证。
+     * M1 {@code usage} 为 no-op（不按量计费），见 {@link QuotaStatusView}。
+     */
+    @GetMapping("/{tenantId}/quota")
+    public ApiResponse<QuotaStatusView> quota(@PathVariable String tenantId) {
+        return ApiResponse.ok(QuotaStatusView.from(service.get(tenantId)));
+    }
+
+    /**
+     * 查询命令式开通的整体阶段与分步进度（对齐契约 {@code getProvisioningStatus} → {@code ProvisioningStatus}）。
+     * 只读，仅需已认证。M1 由租户生命周期状态<b>派生</b>（同步开通、未分步落库），见 {@link ProvisioningStatusView}。
+     */
+    @GetMapping("/{tenantId}/provisioning")
+    public ApiResponse<ProvisioningStatusView> provisioning(@PathVariable String tenantId) {
+        return ApiResponse.ok(ProvisioningStatusView.from(service.get(tenantId)));
     }
 
     /**

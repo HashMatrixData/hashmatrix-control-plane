@@ -104,5 +104,19 @@ class ProvisioningFailureIntegrationTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.status").value("approving"))
                 .andExpect(jsonPath("$.data.statusReason").value(org.hamcrest.Matchers.containsString("compute")));
+
+        // 开通状态派生（#11）：APPROVING+失败留痕 → phase=failed；失败停在 compute（契约 target=helm），
+        // 其前 keycloak(identity) 成功、其后 datastore/secrets pending。验证内部步名→契约 target 映射与失败定位。
+        mvc.perform(asSuperadmin(get("/api/v1/tenants/" + tenantId + "/provisioning")))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.tenantId").value(MockTenants.TENANT_DEMO))
+                .andExpect(jsonPath("$.data.phase").value("failed"))
+                .andExpect(jsonPath("$.data.steps.length()").value(4))
+                .andExpect(jsonPath("$.data.steps[0].target").value("keycloak"))
+                .andExpect(jsonPath("$.data.steps[0].status").value("succeeded"))
+                .andExpect(jsonPath("$.data.steps[1].target").value("helm"))
+                .andExpect(jsonPath("$.data.steps[1].status").value("failed"))
+                .andExpect(jsonPath("$.data.steps[2].status").value("pending"))
+                .andExpect(jsonPath("$.data.steps[3].status").value("pending"));
     }
 }

@@ -136,13 +136,14 @@ class SecurityMatrixIntegrationTest {
 
     @Test
     void normalUserCanSelfViewAndRead() throws Exception {
-        // WP3 自助视图 + 只读端点仅需已认证（USER 即可）→ 200，恒返回数组（契约「响应一律数组、可为空」）。
+        // WP3 自助视图 + 只读端点仅需已认证（USER 即可）→ 200。本用例守护「USER 可读」鉴权语义；
+        // /me/tenants 恒返回数组（契约「响应一律数组、可为空」），/tenants 为契约 TenantList（items 数组 + 分页元）。
         mvc.perform(asUser(get(ME_TENANTS)))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data").isArray());
         mvc.perform(asUser(get(TENANTS)))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.data").isArray());
+                .andExpect(jsonPath("$.data.items").isArray());
     }
 
     @ParameterizedTest(name = "探针放行(免认证不被拦): {0}")

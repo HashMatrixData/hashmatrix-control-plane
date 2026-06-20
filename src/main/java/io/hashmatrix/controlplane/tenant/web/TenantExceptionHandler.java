@@ -9,6 +9,7 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
+import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
 
 /**
  * 控制平面领域异常 → HTTP 状态码映射。
@@ -36,6 +37,18 @@ public class TenantExceptionHandler {
             InvalidApprovalRequestException ex) {
         return ResponseEntity.status(HttpStatus.BAD_REQUEST)
                 .body(ApiResponse.fail("INVALID_APPROVAL", ex.getMessage()));
+    }
+
+    /**
+     * 查询参数类型/取值不匹配 → 400（如 {@code ?status=bogus} 经 {@code StringToTenantStatusConverter} 抛
+     * {@link IllegalArgumentException}）。显式映射：避免落到 starter-web 兜底 {@code GlobalExceptionHandler}
+     * 被归为 500（实测默认即 500）。仅回显参数名（用户输入侧），不外泄内部细节。
+     */
+    @ExceptionHandler(MethodArgumentTypeMismatchException.class)
+    public ResponseEntity<ApiResponse<Void>> handleTypeMismatch(
+            MethodArgumentTypeMismatchException ex) {
+        return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+                .body(ApiResponse.fail("INVALID_PARAMETER", "查询参数取值非法：" + ex.getName()));
     }
 
     @ExceptionHandler(TenantKeyConflictException.class)

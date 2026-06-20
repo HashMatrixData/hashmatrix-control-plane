@@ -55,6 +55,8 @@
 > 2. **`/api` 前缀约定**：契约 `info.description` 已写明「网关 strip 部署级 `/api`，对外为 `/v1/...`」；实现保持应用内 `/api/v1/...`。
 > 3. **`Tenant`/`TenantView` 结构**：已全面对齐——单租户端点改 `{tenantId}` 路由键寻址（内部 UUID 不出边界）；`organization{orgId,orgAlias}`/`dataPlane{namespace,dbSchema,dorisCatalog,helmRelease}` 嵌套；quota 改 `maxStorageGi`/`maxConcurrentJobs`+`compute`（领域+DB 迁移 V2，字节→GiB）；`deliveryMode` 上收为部署级配置（不入注册体/视图）、`id`/`adminEmail` 不出视图；`statusReason` 已纳入契约 `Tenant`（加法）；注册体改 `requestedQuota`。webui 消费方侧字段对接经 cross-ask 协同。
 
+> ✅ **契约已声明端点已补齐（#11）**：原「契约声明、实现缺失」三处已落地——`GET /v1/tenants` 加 `?status` 服务端过滤 + `page`/`pageSize` 分页（→ `TenantList`，取代裸数组 + 前端客户端过滤）；`GET /v1/tenants/{tenantId}/quota`（→ `QuotaStatus`）；`GET /v1/tenants/{tenantId}/provisioning`（→ `ProvisioningStatus`）。**M1 仅落子集 known-drift（已登记）**：① `QuotaStatus.usage` 为 no-op（合同制不按量计费、`MeteringPort` 仅写不读）→ 各字段省略（`{}`）表「未计量」；② `ProvisioningStatus` 由租户生命周期状态**派生**（M1 同步开通、未分步落库），失败步由 `statusReason` 定位、失败 message 已脱敏；注销（deprovision）回收进度派生为后置（`deleted` 暂统一 `succeeded`）。接入真实计量 / 异步开通后于原契约形态内补全，消费方 tolerant reader 零改动。
+
 **如何查阅（随时拉最新，勿存本地副本）**：
 - 在 superproject（`hashmatrix/services/<本仓>`）下：直接读 `../../contracts/`。
 - 独立 clone：WebFetch `https://raw.githubusercontent.com/HashMatrixData/hashmatrix/main/contracts/registry.yaml`（公开仓免鉴权）→ 按 registry 取对应契约；或 `gh api repos/HashMatrixData/hashmatrix/contents/contracts/<path> -H "Accept: application/vnd.github.raw"`。
