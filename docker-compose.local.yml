@@ -31,9 +31,15 @@ services:
     # （provisioning.identity=keycloak）调用 organizations API 会 404。默认 stub 路径不受影响。
     command: ["start-dev", "--features=organization"]
     environment:
-      KC_BOOTSTRAP_ADMIN_USERNAME: admin
-      KC_BOOTSTRAP_ADMIN_PASSWORD: admin   # 本地占位口令，仅本机使用
+      # KC 25 初始管理员用 KEYCLOAK_ADMIN(_PASSWORD)；KC_BOOTSTRAP_ADMIN_* 是 26 的形态、25 不创建管理员。
+      KEYCLOAK_ADMIN: admin
+      KEYCLOAK_ADMIN_PASSWORD: admin   # 本地占位口令，仅本机使用
       KC_HEALTH_ENABLED: "true"
+      # 经端口映射的 HTTP 访问下 realm sslRequired 会拦截（"HTTPS required"）；信任转发头放行（仅本地）。
+      KC_PROXY_HEADERS: xforwarded
+    # ⚠️ 本地真实开通端到端还需：① 预置目标 realm `hashmatrix`（启用 organizations）；② 调用方携带
+    #    X-Forwarded-Proto:https（配合上面的 proxy-headers）。已验证的最小可跑参照见集成测试
+    #    KeycloakIdentityProvisionerRealIntegrationTest（CI 内自带容器、可重复跑）。
     ports:
       # 端口基线 Keycloak=8180（与本服务应用端口 8081 解冲突；容器内仍 8080）。
       # 对齐 control-plane 真实身份适配器默认 serverUrl=http://localhost:8180。
