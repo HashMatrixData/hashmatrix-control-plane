@@ -1,0 +1,53 @@
+# PR / push 级持续集成：跑 `mvn verify`（编译 + 单测 + Testcontainers 集成测试）。
+#
+# 为何存在：本仓另一工作流 publish-image 是 **tag-only** 出镜像，普通 push / PR **从不构建**——
+#   坏代码（如集成测试无法 bootstrap Spring 上下文、Provisioner 回归）会无声漏进 main。
+#   本工作流在 **PR 即跑 verify**，把回归挡在合并前；push main 再跑一次作为合并后兜底。
+#
+# 集成测试：本仓 *IntegrationTest（ControlPlane / Provisioning / SecurityMatrix / KeycloakIdentityProvisionerReal）
+#   依赖 Testcontainers 起 postgres / keycloak 容器；ubuntu-latest 自带 Docker daemon，可原样运行。
+#
+# 制品鉴权：解析 hashmatrix-* 私有制品（GitHub Packages，仓库 HashMatrixData/hashmatrix）需凭据。
+#   用 actions/setup-java 自动生成的 ~/.m2/settings.xml（server-id=github，匹配 pom 的 repository id），
+#   凭据走内置 GITHUB_TOKEN（本 job 申请 packages:read）。
+#   🔴 红线：凭据仅运行期注入，绝不入库。
+#   ⚠️ 跨仓前提：内置 token 须被授权读取 HashMatrixData/hashmatrix 的 Packages（org internal 可见性
+#      或显式授予本仓）。若拿不到（401/403），改用仓库 secret 注入含 read:packages PAT 的 settings.xml。
+name: ci
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  packages: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # setup-java 默认写 ~/.m2/settings.xml：<server id=github user=${env.GITHUB_ACTOR} pass=${env.GITHUB_TOKEN}>
+      # —— server-id 恰为 pom <repository> 的 id=github，故无需自写 settings.xml。
+      - name: Set up JDK 17 (temurin)
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+          cache: maven
+
+      - name: mvn verify（编译 + 单测 + Testcontainers 集成测试）
+        # ubuntu-latest 自带 Docker daemon，Testcontainers 起 postgres / keycloak 容器跑 *IntegrationTest。
+        # GITHUB_TOKEN 供 settings.xml 的 ${env.GITHUB_TOKEN} 占位解析 GH Packages 凭据。
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: mvn -B -ntp verify
