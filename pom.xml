@@ -177,4 +177,20 @@
       </plugin>
     </plugins>
   </build>
+
+  <!--
+    平台制品仓（公共 parent/BOM：io.hashmatrix:*）。在 POM 内声明，使 <parent> 在「只 clone 本仓」
+    场景下也能从 GitHub Packages 解析（parent 早于 POM 其余部分解析，故须在此而非仅靠 settings）。
+    凭据不在此处：server id=github 的 user/token 由运行环境的 ~/.m2/settings.xml 注入（CI = setup-java
+    内置 settings + GITHUB_TOKEN；本地 = 自备含 read:packages 的 settings）。🔴 红线：密钥不入库。
+  -->
+  <repositories>
+    <repository>
+      <id>github</id>
+      <name>GitHub Packages · HashMatrixData/hashmatrix</name>
+      <url>https://maven.pkg.github.com/HashMatrixData/hashmatrix</url>
+      <releases><enabled>true</enabled></releases>
+      <snapshots><enabled>true</enabled></snapshots>
+    </repository>
+  </repositories>
 </project>
