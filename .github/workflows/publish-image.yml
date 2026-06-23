@@ -4,11 +4,14 @@
 #   仅在发版 tag / 手动触发上运行，**普通 push / PR 不触发**——避免在上游制品（hashmatrix-bom v0.2.0 等）
 #   发布前让 main 的 CI 变红；制品就绪后打 tag 即出镜像。
 #
-# 🔴 红线：制品仓凭据 / Maven settings 一律经仓库 secret 注入，**绝不入库 / 不落镜像层**。
+# 🔴 红线：制品仓凭据 / Maven settings 仅运行期注入，**绝不入库 / 不落镜像层**。
 #   - GHCR 登录用内置 GITHUB_TOKEN（需 packages: write 权限）。
-#   - 解析 hashmatrix-* 私有制品所需的 Maven settings.xml 经仓库 secret MAVEN_SETTINGS_XML 注入：
-#     运行时写入 runner 临时目录，再以 BuildKit secret（id=maven_settings）挂入 docker build
-#     （见 Dockerfile 的 --mount=type=secret）——不写进任何镜像层、不入库。
+#   - 解析 hashmatrix-* 私有制品所需的 Maven settings.xml 用内置 GITHUB_TOKEN 现场生成
+#     （对齐 governance ci.yml，无需手动配置 MAVEN_SETTINGS_XML secret / PAT）：写入 runner
+#     临时目录，再以 BuildKit secret（id=maven_settings）挂入 docker build（见 Dockerfile 的
+#     --mount=type=secret）——不写进任何镜像层、不入库。
+#   ⚠️ 前提：内置 GITHUB_TOKEN 须能读 HashMatrixData/hashmatrix 的 Packages（org internal 可见
+#      或显式授予本仓）；拿不到（401/403）时再回退到手动 PAT settings.xml。
 name: publish-image
 
 on:
@@ -61,13 +64,49 @@ jobs:
             echo "push=${{ inputs.push }}" >> "$GITHUB_OUTPUT"
           fi
 
-      - name: 写入 Maven settings（来自 secret，仅 runner 临时目录）
+      # 用内置 GITHUB_TOKEN 现场生成 settings.xml（对齐 governance ci.yml 的做法）——
+      # 无需手动配置 MAVEN_SETTINGS_XML secret / PAT。job 级 packages:write 含 read，
+      # 足以解析 HashMatrixData/hashmatrix 的 hashmatrix-* 私有制品。
+      # 用 <profiles> 注册制品仓（不仅 server 凭据）：pom 的 <repositories> 解析不到 <parent> 自身，
+      # parent 必须经 settings.xml 的 repository 解析，全新 clone 方可在镜像内 mvn package。
+      - name: 生成 Maven settings（GitHub Packages · 内置 GITHUB_TOKEN）
         env:
-          MAVEN_SETTINGS_XML: ${{ secrets.MAVEN_SETTINGS_XML }}
+          GH_ACTOR: ${{ github.actor }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          # 经 env 传入避免 XML 特殊字符/多行被 shell 误解析；未配置该 secret 时写空文件，
-          # 构建会在解析私有制品处显式失败（发版 tag 必须先配置该 secret）。
-          printf '%s' "$MAVEN_SETTINGS_XML" > "${RUNNER_TEMP}/m2-settings.xml"
+          cat > "${RUNNER_TEMP}/m2-settings.xml" <<EOF
+          <settings>
+            <servers>
+              <server>
+                <id>github</id>
+                <username>${GH_ACTOR}</username>
+                <password>${GH_TOKEN}</password>
+              </server>
+            </servers>
+            <profiles>
+              <profile>
+                <id>github</id>
+                <repositories>
+                  <repository>
+                    <id>github</id>
+                    <url>https://maven.pkg.github.com/HashMatrixData/hashmatrix</url>
+                    <releases><enabled>true</enabled></releases>
+                    <snapshots><enabled>false</enabled></snapshots>
+                  </repository>
+                </repositories>
+                <pluginRepositories>
+                  <pluginRepository>
+                    <id>github</id>
+                    <url>https://maven.pkg.github.com/HashMatrixData/hashmatrix</url>
+                  </pluginRepository>
+                </pluginRepositories>
+              </profile>
+            </profiles>
+            <activeProfiles>
+              <activeProfile>github</activeProfile>
+            </activeProfiles>
+          </settings>
+          EOF
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
