@@ -35,8 +35,8 @@ import org.testcontainers.junit.jupiter.Testcontainers;
  * （{@code decision=approve|reject}）；视图结构对齐契约（嵌套 {@code organization}/{@code dataPlane}）。
  *
  * <p>鉴权（starter-security）：加 {@code starter-security} 后非放行路径默认需认证，故全部请求带上网关
- * 下发的 {@code X-User}/{@code X-Roles: SUPERADMIN}（经 {@link #asSuperadmin}）——既满足只读端点的
- * {@code authenticated()}，也满足高危端点的 {@code SUPERADMIN} 门控；细粒度鉴权矩阵（401/403）由
+ * 下发的 {@code X-User}/{@code X-Roles: superadmin}（经 {@link #asSuperadmin}）——既满足只读端点的
+ * {@code authenticated()}，也满足高危端点的 {@code superadmin} 门控；细粒度鉴权矩阵（401/403）由
  * Docker-free 的 {@code TenantApiSecurityTest} 守护。
  */
 @SpringBootTest
@@ -66,9 +66,9 @@ class ControlPlaneIntegrationTest {
     @Autowired private MockMvc mvc;
     @Autowired private ObjectMapper json;
 
-    /** 给请求盖上网关下发的平台管理员身份头（脱敏占位用户名 + SUPERADMIN 角色）。 */
+    /** 给请求盖上网关下发的平台管理员身份头（脱敏占位用户名 + superadmin 角色）。 */
     private static MockHttpServletRequestBuilder asSuperadmin(MockHttpServletRequestBuilder builder) {
-        return builder.header("X-User", "ops-admin").header("X-Roles", "SUPERADMIN");
+        return builder.header("X-User", "ops-admin").header("X-Roles", "superadmin");
     }
 
     /** 注册体不含 {@code deliveryMode}（部署级、非按租户）。 */

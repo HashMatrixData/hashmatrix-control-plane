@@ -81,7 +81,7 @@ class TenantApiSecurityTest {
         mvc.perform(
                         post(APPROVAL)
                                 .header("X-User", "ops")
-                                .header("X-Roles", "SUPERADMIN")
+                                .header("X-Roles", "superadmin")
                                 .contentType(MediaType.APPLICATION_JSON)
                                 .content("{\"decision\":\"approve\"}"))
                 .andExpect(status().isOk());
