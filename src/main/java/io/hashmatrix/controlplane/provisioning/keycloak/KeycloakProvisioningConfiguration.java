@@ -1,6 +1,7 @@
 package io.hashmatrix.controlplane.provisioning.keycloak;
 
 import io.hashmatrix.controlplane.provisioning.spi.IdentityProvisioner;
+import io.hashmatrix.controlplane.tenant.member.OrgMemberDirectory;
 import org.keycloak.OAuth2Constants;
 import org.keycloak.admin.client.Keycloak;
 import org.keycloak.admin.client.KeycloakBuilder;
@@ -48,5 +49,16 @@ public class KeycloakProvisioningConfiguration {
     IdentityProvisioner keycloakIdentityProvisioner(
             Keycloak keycloak, KeycloakProvisioningProperties props) {
         return new KeycloakIdentityProvisioner(keycloak, props);
+    }
+
+    /**
+     * 真实组织成员目录（ST1）——与身份开通共用同一 admin client / 目标 realm。{@code identity=keycloak} 时
+     * 由本类提供，让位于 {@code StubProvisioningConfiguration} 的内存 stub（按 {@code identity} 属性互斥）。
+     */
+    @Bean
+    @ConditionalOnMissingBean
+    OrgMemberDirectory keycloakOrgMemberDirectory(
+            Keycloak keycloak, KeycloakProvisioningProperties props) {
+        return new KeycloakOrgMemberDirectory(keycloak, props);
     }
 }
