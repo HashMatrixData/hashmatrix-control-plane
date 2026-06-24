@@ -2,8 +2,11 @@ package io.hashmatrix.controlplane.tenant.web;
 
 import io.hashmatrix.controlplane.provisioning.ProvisioningException;
 import io.hashmatrix.controlplane.tenant.domain.TenantStatusTransitionException;
+import io.hashmatrix.controlplane.tenant.member.MemberUserNotFoundException;
+import io.hashmatrix.controlplane.tenant.member.TenantOrgNotProvisionedException;
 import io.hashmatrix.controlplane.tenant.service.TenantKeyConflictException;
 import io.hashmatrix.controlplane.tenant.service.TenantNotFoundException;
+import io.hashmatrix.starter.tenant.TenantContextMissingException;
 import io.hashmatrix.starter.web.ApiResponse;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -69,5 +72,31 @@ public class TenantExceptionHandler {
         // 开通依赖下游（Keycloak/K8s/数据），失败语义为「网关后端不可用」→ 502。
         return ResponseEntity.status(HttpStatus.BAD_GATEWAY)
                 .body(ApiResponse.fail("PROVISIONING_FAILED", ex.getMessage()));
+    }
+
+    /** 成员面：待加入用户在身份后端不存在 → 404（对齐契约 {@code addOrgMember} 的 404）。 */
+    @ExceptionHandler(MemberUserNotFoundException.class)
+    public ResponseEntity<ApiResponse<Void>> handleMemberUserNotFound(
+            MemberUserNotFoundException ex) {
+        return ResponseEntity.status(HttpStatus.NOT_FOUND)
+                .body(ApiResponse.fail("MEMBER_USER_NOT_FOUND", ex.getMessage()));
+    }
+
+    /** 成员面：租户尚未开通身份组织（{@code keycloak_org_id} 为空）→ 409（契约成员面 StateConflict）。 */
+    @ExceptionHandler(TenantOrgNotProvisionedException.class)
+    public ResponseEntity<ApiResponse<Void>> handleOrgNotProvisioned(
+            TenantOrgNotProvisionedException ex) {
+        return ResponseEntity.status(HttpStatus.CONFLICT)
+                .body(ApiResponse.fail("TENANT_ORG_NOT_PROVISIONED", ex.getMessage()));
+    }
+
+    /**
+     * 成员面（{@code require_tenant=true}）缺活动租户头 {@code X-Tenant-Id} → 400。
+     * 正常经网关注入；裸调/网关误配才触发。不外泄内部细节。
+     */
+    @ExceptionHandler(TenantContextMissingException.class)
+    public ResponseEntity<ApiResponse<Void>> handleMissingTenant(TenantContextMissingException ex) {
+        return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+                .body(ApiResponse.fail("TENANT_CONTEXT_REQUIRED", "缺少活动租户上下文（X-Tenant-Id）"));
     }
 }
