@@ -3,12 +3,14 @@ package io.hashmatrix.controlplane.provisioning;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import io.hashmatrix.controlplane.provisioning.keycloak.KeycloakIdentityProvisioner;
+import io.hashmatrix.controlplane.provisioning.keycloak.KeycloakOrgMemberDirectory;
 import io.hashmatrix.controlplane.provisioning.keycloak.KeycloakProvisioningConfiguration;
 import io.hashmatrix.controlplane.provisioning.spi.ComputeProvisioner;
 import io.hashmatrix.controlplane.provisioning.spi.DataProvisioner;
 import io.hashmatrix.controlplane.provisioning.spi.IdentityProvisioner;
 import io.hashmatrix.controlplane.provisioning.spi.SecretsProvisioner;
 import io.hashmatrix.controlplane.provisioning.stub.StubProvisioningConfiguration;
+import io.hashmatrix.controlplane.tenant.member.OrgMemberDirectory;
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.test.context.runner.ApplicationContextRunner;
 
@@ -37,6 +39,10 @@ class ProvisioningWiringTest {
                     assertThat(ctx).hasSingleBean(ComputeProvisioner.class);
                     assertThat(ctx).hasSingleBean(DataProvisioner.class);
                     assertThat(ctx).hasSingleBean(SecretsProvisioner.class);
+                    // 成员目录（ST1）随 identity 同模式互斥：默认 stub（内存实现）。
+                    assertThat(ctx).hasSingleBean(OrgMemberDirectory.class);
+                    assertThat(ctx.getBean(OrgMemberDirectory.class))
+                            .isNotInstanceOf(KeycloakOrgMemberDirectory.class);
                 });
     }
 
@@ -53,6 +59,10 @@ class ProvisioningWiringTest {
                             assertThat(ctx).hasSingleBean(ComputeProvisioner.class);
                             assertThat(ctx).hasSingleBean(DataProvisioner.class);
                             assertThat(ctx).hasSingleBean(SecretsProvisioner.class);
+                            // 成员目录随 identity=keycloak 切真实 KC 适配器，且唯一。
+                            assertThat(ctx).hasSingleBean(OrgMemberDirectory.class);
+                            assertThat(ctx.getBean(OrgMemberDirectory.class))
+                                    .isInstanceOf(KeycloakOrgMemberDirectory.class);
                         });
     }
 
@@ -71,6 +81,9 @@ class ProvisioningWiringTest {
                             assertThat(ctx).hasSingleBean(ComputeProvisioner.class);
                             assertThat(ctx).hasSingleBean(DataProvisioner.class);
                             assertThat(ctx).hasSingleBean(SecretsProvisioner.class);
+                            assertThat(ctx).hasSingleBean(OrgMemberDirectory.class);
+                            assertThat(ctx.getBean(OrgMemberDirectory.class))
+                                    .isInstanceOf(KeycloakOrgMemberDirectory.class);
                         });
     }
 }

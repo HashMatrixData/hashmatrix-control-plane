@@ -6,6 +6,7 @@ import io.hashmatrix.controlplane.provisioning.spi.DataProvisioner;
 import io.hashmatrix.controlplane.provisioning.spi.IdentityProvisioner;
 import io.hashmatrix.controlplane.provisioning.spi.ProvisioningRequest;
 import io.hashmatrix.controlplane.provisioning.spi.SecretsProvisioner;
+import io.hashmatrix.controlplane.tenant.member.OrgMemberDirectory;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
@@ -61,6 +62,22 @@ public class StubProvisioningConfiguration {
                 log.info("[stub:identity] 回收 Keycloak Organization tenantKey={}", request.tenantKey());
             }
         };
+    }
+
+    /**
+     * 内存版组织成员目录 stub（ST1）——与 {@link #stubIdentityProvisioner()} 同样额外 gate 于
+     * {@code identity!=keycloak}，使 {@code identity=keycloak} 时让位于真实 {@code KeycloakOrgMemberDirectory}；
+     * 默认（identity 未设）提供内存实现，无活 Keycloak 也能跑通成员列/加/移时序。
+     */
+    @Bean
+    @ConditionalOnMissingBean
+    @ConditionalOnProperty(
+            prefix = "hashmatrix.control-plane.provisioning",
+            name = "identity",
+            havingValue = "stub",
+            matchIfMissing = true)
+    OrgMemberDirectory stubOrgMemberDirectory() {
+        return new InMemoryOrgMemberDirectory();
     }
 
     @Bean
