@@ -64,7 +64,7 @@ class ProvisioningFailureIntegrationTest {
 
     /** 给请求盖上网关下发的平台管理员身份头（加 starter-security 后非放行路径默认需认证）。 */
     private static MockHttpServletRequestBuilder asSuperadmin(MockHttpServletRequestBuilder builder) {
-        return builder.header("X-User", "ops-admin").header("X-Roles", "SUPERADMIN");
+        return builder.header("X-User", "ops-admin").header("X-Roles", "superadmin");
     }
 
     @Test

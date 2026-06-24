@@ -38,15 +38,18 @@ import org.springframework.web.bind.annotation.RestController;
  * <p>鉴权模型（starter-security · 网关前置）：网关完成 OIDC 校验后下发 {@code X-User}/{@code X-Roles}，
  * 应用<b>不二次校验 token</b>，由 {@code GatewayPreAuthFilter} 还原 SecurityContext。非放行路径默认
  * {@code authenticated()}；跨租户高权变更（{@code approval}/{@code suspend}/{@code resume}/{@code delete}）
- * 经 {@link PreAuthorize} 限平台管理员（{@code SUPERADMIN}）。只读/注册端点仅需已认证主体。
+ * 经 {@link PreAuthorize} 限平台管理员（{@code superadmin}）。只读/注册端点仅需已认证主体。
  * 探针/指标（{@code /actuator/health|info|prometheus}）放行——见 starter-security 默认过滤链。
  */
 @RestController
 @RequestMapping("/api/v1/tenants")
 public class TenantController {
 
-    /** 跨租户高权操作门控：限平台管理员（网关下发 {@code X-Roles: SUPERADMIN} → 权限 {@code ROLE_SUPERADMIN}）。 */
-    private static final String REQUIRE_SUPERADMIN = "hasRole('SUPERADMIN')";
+    /**
+     * 跨租户高权操作门控：限平台管理员（网关下发 {@code X-Roles: superadmin} → 权限 {@code ROLE_superadmin}）。
+     * 角色名小写，对齐平台既有约定（security 服务、admin-webui、realm 角色均小写，见 #16）。
+     */
+    private static final String REQUIRE_SUPERADMIN = "hasRole('superadmin')";
 
     private final TenantService service;
 

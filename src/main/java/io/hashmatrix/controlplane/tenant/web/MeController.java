@@ -19,7 +19,7 @@ import org.springframework.web.bind.annotation.RestController;
  *
  * <p>鉴权：非放行路径默认 {@code authenticated()}（见 starter-security 默认过滤链）——无身份 → 401。
  * 「当前用户」取自 {@link Authentication}（由 {@code GatewayPreAuthFilter} 据网关下发的 {@code X-User} 还原），
- * <b>不裸读 header</b>。任意已认证用户只查自身 membership，故不加 {@code SUPERADMIN} 门控。
+ * <b>不裸读 header</b>。任意已认证用户只查自身 membership，故不加 {@code superadmin} 门控。
  */
 @RestController
 @RequestMapping("/api/v1/me")

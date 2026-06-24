@@ -22,14 +22,14 @@ import org.springframework.web.bind.annotation.RestController;
 /**
  * 组织成员自管理 API（契约 {@code openapi/control-plane-v1} 的 {@code /v1/org/members}，M2 链③）。
  *
- * <p><b>租户自管理面</b>，区别于 {@link TenantController} 的 SUPERADMIN 跨租户运营面：
+ * <p><b>租户自管理面</b>，区别于 {@link TenantController} 的 superadmin 跨租户运营面：
  *
  * <ul>
  *   <li><b>寻址（D2/D9）</b>：活动租户<b>唯一</b>来自网关注入的 {@code X-Tenant-Id}（经 starter-tenant
  *       {@link TenantContextHolder} 还原），<b>不</b>在 path 携带 {@code tenantId}——避免双源、守 D2；
  *       {@link OrgMemberService} 据此解析本租户 org 并强制隔离，调用方无法跨租户寻址。
  *   <li><b>门控</b>：{@code hasRole('tenant-admin')}（网关下发 {@code X-Roles: tenant-admin} →
- *       权限 {@code ROLE_tenant-admin}）——租户管理员自管理，非平台 SUPERADMIN。非管理员 → 403。
+ *       权限 {@code ROLE_tenant-admin}）——租户管理员自管理，非平台 superadmin。非管理员 → 403。
  *   <li><b>SoT（D1/R3）</b>：成员真相在 Keycloak Org，本控制器经 service→KC Admin API 编排，
  *       响应 {@link OrgMemberView} 不含任何凭据。
  * </ul>
@@ -41,7 +41,7 @@ import org.springframework.web.bind.annotation.RestController;
 @RequestMapping("/api/v1/org/members")
 public class OrgMemberController {
 
-    /** 租户自管理门控：限当前租户管理员（区别于 {@code TenantController} 的 SUPERADMIN 跨租户面）。 */
+    /** 租户自管理门控：限当前租户管理员（区别于 {@code TenantController} 的 superadmin 跨租户面）。 */
     private static final String REQUIRE_TENANT_ADMIN = "hasRole('tenant-admin')";
 
     private final OrgMemberService service;

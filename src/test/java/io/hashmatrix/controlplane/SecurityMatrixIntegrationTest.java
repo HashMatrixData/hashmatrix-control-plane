@@ -93,12 +93,12 @@ class SecurityMatrixIntegrationTest {
         return builder.header("X-User", "alice").header("X-Roles", "USER");
     }
 
-    /** 网关下发的平台管理员身份头（脱敏占位用户名 + SUPERADMIN 角色）。 */
+    /** 网关下发的平台管理员身份头（脱敏占位用户名 + superadmin 角色）。 */
     private static MockHttpServletRequestBuilder asSuperadmin(MockHttpServletRequestBuilder builder) {
-        return builder.header("X-User", "ops-admin").header("X-Roles", "SUPERADMIN");
+        return builder.header("X-User", "ops-admin").header("X-Roles", "superadmin");
     }
 
-    /** 全部高危端点（跨租户高权变更，须 {@code SUPERADMIN}）。审批为单端点 {@code /approval}（对齐契约）。 */
+    /** 全部高危端点（跨租户高权变更，须 {@code superadmin}）。审批为单端点 {@code /approval}（对齐契约）。 */
     static Stream<Arguments> highRiskEndpoints() {
         return Stream.of(
                 arguments("POST .../approval", post(TENANTS + "/" + DUMMY_ID + "/approval")),
@@ -130,7 +130,7 @@ class SecurityMatrixIntegrationTest {
     @MethodSource("highRiskEndpoints")
     void normalUserForbiddenOnHighRiskEndpoints(
             String label, MockHttpServletRequestBuilder request) throws Exception {
-        // 已认证但非 SUPERADMIN：方法级 @PreAuthorize 在控制器方法体前拒 → 403（service 不被触达）。
+        // 已认证但非 superadmin：方法级 @PreAuthorize 在控制器方法体前拒 → 403（service 不被触达）。
         mvc.perform(asUser(request)).andExpect(status().isForbidden());
     }
 
@@ -167,8 +167,8 @@ class SecurityMatrixIntegrationTest {
 
     @Test
     void superadminProvisionsTenantThroughApproveUnderSecurity() throws Exception {
-        // 跨边界不变量：启用 security 后，SUPERADMIN 走 register → approve 仍贯通至 ACTIVE（stub 时序、无活集群）；
-        // 同时即「SUPERADMIN → 全 200」在写链路上的代表用例（201 创建 + 200 审批开通）。
+        // 跨边界不变量：启用 security 后，superadmin 走 register → approve 仍贯通至 ACTIVE（stub 时序、无活集群）；
+        // 同时即「superadmin → 全 200」在写链路上的代表用例（201 创建 + 200 审批开通）。
         String body =
                 json.writeValueAsString(
                         Map.of(
